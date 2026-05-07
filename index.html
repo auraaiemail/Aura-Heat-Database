@@ -292,6 +292,9 @@ create policy "all" on customers_data for all using (true) with check (true);</c
       <div class="side-nav-item admin-only" onclick="switchPage('reports')" id="snav-reports">
         <span class="icon">📊</span> Reports
       </div>
+      <div class="side-nav-item admin-only" onclick="switchPage('users')" id="snav-users">
+        <span class="icon">👤</span> Manage Users
+      </div>
     </div>
 
     <!-- Main Content -->
@@ -502,6 +505,63 @@ create policy "all" on customers_data for all using (true) with check (true);</c
         </div>
       </div>
 
+      <!-- USERS (admin only) -->
+      <div class="page admin-only" id="page-users">
+        <div class="card">
+          <div class="card-title">👤 Manage Staff Users</div>
+          <div style="margin-bottom:16px;font-size:13px;color:#555">
+            Add staff members here. They will appear in the login dropdown. Admin PIN is always 9999.
+          </div>
+
+          <!-- Add User Form -->
+          <div style="background:#F8FAFC;border:1.5px solid #E0E0E0;border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">Add New Staff</div>
+            <div class="row3">
+              <div class="field">
+                <label>Full Name</label>
+                <input type="text" id="new-user-name" placeholder="e.g. Ravi Kumar">
+              </div>
+              <div class="field">
+                <label>Role</label>
+                <select id="new-user-role">
+                  <option value="staff">Staff (Office)</option>
+                  <option value="sales">Sales (Field)</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>PIN (4 digits)</label>
+                <input type="password" id="new-user-pin" placeholder="4-digit PIN" maxlength="4" oninput="this.value=this.value.replace(/\D/g,'')">
+              </div>
+            </div>
+            <div class="action-row" style="margin-top:8px">
+              <button class="btn btn-primary btn-sm" onclick="addUser()">+ Add Staff Member</button>
+              <span class="err-msg" id="user-err"></span>
+            </div>
+          </div>
+
+          <!-- User List -->
+          <div id="user-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">ℹ️ Role Permissions</div>
+          <table style="width:100%;font-size:12px;border-collapse:collapse">
+            <tr style="background:#F0F4F8">
+              <th style="padding:8px;text-align:left;border:1px solid #E0E0E0">Feature</th>
+              <th style="padding:8px;text-align:center;border:1px solid #E0E0E0">👑 Admin</th>
+              <th style="padding:8px;text-align:center;border:1px solid #E0E0E0">👷 Staff</th>
+              <th style="padding:8px;text-align:center;border:1px solid #E0E0E0">🚗 Sales</th>
+            </tr>
+            <tr><td style="padding:8px;border:1px solid #E0E0E0">Stock Entry (IN/OUT)</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">❌</td></tr>
+            <tr style="background:#F8FAFC"><td style="padding:8px;border:1px solid #E0E0E0">Stock Balance View</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td></tr>
+            <tr><td style="padding:8px;border:1px solid #E0E0E0">Customer Follow-up</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td></tr>
+            <tr style="background:#F8FAFC"><td style="padding:8px;border:1px solid #E0E0E0">Reports & Downloads</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">❌</td><td style="text-align:center;border:1px solid #E0E0E0">❌</td></tr>
+            <tr><td style="padding:8px;border:1px solid #E0E0E0">Manage Users</td><td style="text-align:center;border:1px solid #E0E0E0">✅</td><td style="text-align:center;border:1px solid #E0E0E0">❌</td><td style="text-align:center;border:1px solid #E0E0E0">❌</td></tr>
+          </table>
+        </div>
+      </div>
+
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
@@ -563,13 +623,15 @@ function doLogin() {
   const pin  = document.getElementById('login-pin').value;
   const err  = document.getElementById('login-err');
   if (!user) { err.textContent='Please select your name.'; return; }
-  if (!USERS[user]) { err.textContent='User not found.'; return; }
-  if (USERS[user].pin !== pin) { err.textContent='Wrong PIN. Try again.'; return; }
-  curUser = user; curRole = USERS[user].role;
+  if (!APP_USERS[user]) { err.textContent='User not found.'; return; }
+  if (APP_USERS[user].pin !== pin) { err.textContent='Wrong PIN. Try again.'; return; }
+  curUser = user; curRole = APP_USERS[user].role;
   localStorage.setItem('aura_user', user);
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-app').style.display='block';
-  document.getElementById('role-badge').textContent = curRole==='admin'?'👑 Admin':curRole==='sales'?'🚗 Sales':'👷 Staff';
+  const uname = APP_USERS[user]?.name || user;
+  const roleIcon = curRole==='admin'?'👑':curRole==='sales'?'🚗':'👷';
+  document.getElementById('role-badge').textContent = roleIcon+' '+uname;
   // Hide admin-only elements for non-admins
   document.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = curRole==='admin' ? '' : 'none';
@@ -856,6 +918,8 @@ function clearTxnForm() {
   ['txn-ref','txn-party','txn-rem','psearch'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('txn-err').textContent='';
   document.getElementById('txn-date').value=td();
+  updateLoginDropdown();
+  renderUserList();
   renderPicker();
 }
 
@@ -1072,7 +1136,7 @@ function csv(rows,fn){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const PAGES=['dashboard','stock-entry','stock','customers','followup','ledger','reports'];
+const PAGES=['dashboard','stock-entry','stock','customers','followup','ledger','reports','users'];
 function switchPage(p) {
   PAGES.forEach(name=>{
     const pg=document.getElementById('page-'+name);
@@ -1097,9 +1161,94 @@ function toast(msg,type=''){
 }
 function td(){return new Date().toISOString().split('T')[0];}
 
+// ── User Management ───────────────────────────────────────────────────────
+let APP_USERS = JSON.parse(localStorage.getItem('aura_users') || 'null') || {
+  admin: {name:'Admin', pin:'9999', role:'admin'},
+};
+
+function saveUsers() {
+  localStorage.setItem('aura_users', JSON.stringify(APP_USERS));
+  if(sb) sb.from('customers_data').upsert({id:999, data:{users: APP_USERS}});
+}
+
+function renderUserList() {
+  const list = document.getElementById('user-list');
+  if(!list) return;
+  const users = Object.entries(APP_USERS);
+  list.innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+      Current Staff (${users.length} members)
+    </div>
+    ${users.map(([key,u])=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#fff;border:1px solid #E0E0E0;border-radius:8px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">
+            ${u.name.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px">${u.name}</div>
+            <div style="font-size:11px;color:#888">${u.role==='admin'?'👑 Admin':u.role==='sales'?'🚗 Sales':'👷 Staff'} · PIN: ${'•'.repeat(u.pin.length)}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          ${key!=='admin'?`<button class="btn btn-ghost btn-sm" onclick="resetPin('${key}')">Reset PIN</button>
+          <button class="btn btn-sm" style="background:#FFEBEE;color:#B71C1C;border:none" onclick="removeUser('${key}')">Remove</button>`:'<span style="font-size:11px;color:#aaa">Owner account</span>'}
+        </div>
+      </div>`).join('')}`;
+  // Also update login dropdown
+  updateLoginDropdown();
+}
+
+function updateLoginDropdown() {
+  const sel = document.getElementById('login-user');
+  if(!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">-- Select your name --</option>' +
+    Object.entries(APP_USERS).map(([key,u])=>
+      `<option value="${key}">${u.name} ${u.role==='admin'?'(Admin)':u.role==='sales'?'(Sales)':'(Staff)'}</option>`
+    ).join('');
+  if(current) sel.value = current;
+}
+
+function addUser() {
+  const name = document.getElementById('new-user-name').value.trim();
+  const role = document.getElementById('new-user-role').value;
+  const pin  = document.getElementById('new-user-pin').value.trim();
+  const err  = document.getElementById('user-err');
+  if(!name){err.textContent='Enter name.';return;}
+  if(pin.length!==4){err.textContent='PIN must be exactly 4 digits.';return;}
+  err.textContent='';
+  // Create key from name
+  const key = name.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'') + '_' + Date.now().toString().slice(-4);
+  APP_USERS[key] = {name, pin, role};
+  saveUsers();
+  renderUserList();
+  document.getElementById('new-user-name').value='';
+  document.getElementById('new-user-pin').value='';
+  toast(`✓ ${name} added successfully!`, 'success');
+}
+
+function removeUser(key) {
+  if(!confirm(`Remove ${APP_USERS[key]?.name}? They will no longer be able to login.`)) return;
+  delete APP_USERS[key];
+  saveUsers();
+  renderUserList();
+  toast('User removed.','');
+}
+
+function resetPin(key) {
+  const newPin = prompt(`Enter new 4-digit PIN for ${APP_USERS[key]?.name}:`);
+  if(!newPin || !/^\d{4}$/.test(newPin)){alert('PIN must be exactly 4 digits.');return;}
+  APP_USERS[key].pin = newPin;
+  saveUsers();
+  toast(`PIN updated for ${APP_USERS[key]?.name}`, 'success');
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 async function initApp() {
   document.getElementById('txn-date').value=td();
+  updateLoginDropdown();
+  renderUserList();
   recalcBal();
   checkAlerts();
   renderDashboard();
@@ -1127,9 +1276,11 @@ else if(typeof CUSTOMERS_INIT !== 'undefined') { if(!CUSTOMERS.length) CUSTOMERS
   // Check saved login
   const savedUser=localStorage.getItem('aura_user');
   if(savedUser&&USERS[savedUser]){
-    document.getElementById('login-screen').style.display='flex';
+    updateLoginDropdown();
+  document.getElementById('login-screen').style.display='flex';
   } else {
-    document.getElementById('login-screen').style.display='flex';
+    updateLoginDropdown();
+  document.getElementById('login-screen').style.display='flex';
   }
 })();
 </script>
