@@ -1,0 +1,14 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="80" fill="#1F4E79"/>
+  <circle cx="256" cy="200" r="100" fill="#FFC107" opacity="0.9"/>
+  <line x1="256" y1="60" x2="256" y2="100" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <line x1="256" y1="300" x2="256" y2="340" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <line x1="116" y1="200" x2="156" y2="200" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <line x1="356" y1="200" x2="396" y2="200" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <line x1="155" y1="99" x2="183" y2="127" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <line x1="329" y1="273" x2="357" y2="301" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <line x1="357" y1="99" x2="329" y2="127" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <line x1="183" y1="273" x2="155" y2="301" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+  <text x="256" y="420" font-family="Arial" font-size="52" font-weight="bold" text-anchor="middle" fill="white">AURA HEAT</text>
+  <text x="256" y="475" font-family="Arial" font-size="32" text-anchor="middle" fill="#FFC107">ENERGY</text>
+</svg>
