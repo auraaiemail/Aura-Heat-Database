@@ -1,7 +1,7 @@
 // Aura Heat Energy — Service Worker v3
 // Auto-clears old cache on every update — change version number to force refresh
 
-const CACHE_NAME = 'aura-heat-v4'; // ← increment this every time you update
+const CACHE_NAME = 'aura-heat-v6'; // ← increment this every time you update
 const OFFLINE_URL = 'index.html';
 
 const CACHE_FILES = [
