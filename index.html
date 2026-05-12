@@ -1726,8 +1726,41 @@ async function deleteTxn(txnId) {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js')
-      .then(reg => console.log('Aura Heat: SW registered'))
+      .then(reg => {
+        console.log('Aura Heat: SW registered v3');
+        // Check for updates every 30 minutes
+        setInterval(() => reg.update(), 30 * 60 * 1000);
+      })
       .catch(err => console.log('Aura Heat: SW failed', err));
+  });
+
+  // Listen for update notification from service worker
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data && event.data.type === 'CACHE_UPDATED') {
+      // Show update notification
+      const banner = document.createElement('div');
+      banner.style.cssText = `
+        position:fixed;top:60px;left:50%;transform:translateX(-50%);
+        background:linear-gradient(135deg,#BF1B2C,#E79B1C);color:#fff;
+        padding:12px 20px;border-radius:10px;z-index:9999;
+        box-shadow:0 4px 16px rgba(0,0,0,0.3);display:flex;
+        align-items:center;gap:12px;font-family:system-ui,sans-serif;
+        font-size:13px;font-weight:600;
+      `;
+      banner.innerHTML = `
+        <span>🔄 App updated! Reload to get the latest version.</span>
+        <button onclick="window.location.reload()" style="
+          background:#fff;color:#BF1B2C;border:none;border-radius:6px;
+          padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px;
+        ">Reload Now</button>
+        <button onclick="this.parentElement.remove()" style="
+          background:rgba(255,255,255,0.2);color:#fff;border:none;
+          border-radius:6px;padding:6px 8px;cursor:pointer;
+        ">✕</button>
+      `;
+      document.body.appendChild(banner);
+      setTimeout(() => banner?.remove(), 15000);
+    }
   });
 }
 
