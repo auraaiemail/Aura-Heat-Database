@@ -1529,7 +1529,7 @@ function openProdModal(code){
       <div class="info-item"><div class="info-label">Opening Stock</div><div class="info-val">${p.q}</div></div>
       <div class="info-item"><div class="info-label">Last Sale Date</div><div class="info-val" style="font-size:13px">${lastSale||'Never'}</div></div>
       <div class="info-item"><div class="info-label">Idle Duration</div>
-        <div class="info-val" style="color:${isIdle?'var(--red)':'var(--green)';}">${lastSale?Math.floor(daysSale/30)+'m '+Math.floor(daysSale%30/1)+'d':'No sales'}</div></div>
+        <div class="info-val" style="color:${isIdle?'var(--red)':'var(--green)'}">${lastSale?Math.floor(daysSale/30)+'m '+Math.floor(daysSale%30/1)+'d':'No sales'}</div></div>
     </div>
     <div class="field"><label>Product Family</label><div style="font-size:13px;padding:6px 0">${p.f||'—'}</div></div>
     <div class="field"><label>Full Description</label><div style="font-size:12px;line-height:1.6;padding:8px;background:#FAFAFA;border-radius:6px">${p.d}</div></div>
