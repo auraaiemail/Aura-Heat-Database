@@ -272,6 +272,9 @@ tr:hover td{background:#FFFAF9}
 <style>
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 </style>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 </head>
 <body>
 
@@ -1121,16 +1124,7 @@ function subscribeRT(){
     .subscribe();
 }
 
-async function saveCustomer(cust){
-  try{
-    const {error} = await sb.from('customers').upsert(cust,{onConflict:'id'});
-    if(!error){
-      const idx = CUSTOMERS_DB.findIndex(c=>c.id===cust.id);
-      if(idx>=0)CUSTOMERS_DB[idx]=cust; else CUSTOMERS_DB.push(cust);
-    }
-    return !error;
-  }catch(e){return false;}
-}
+
 
 async function logActivity(type, details){
   try{
@@ -1491,38 +1485,7 @@ function renderStock(){
 
 // ═══════════════════════════════════════════════════════════════
 // PRODUCT SEARCH & DETAIL
-// ═══════════════════════════════════════════════════════════════
-function searchProduct(){
-  const q=(document.getElementById('prod-search')?.value||'').toLowerCase().trim();
-  const res=document.getElementById('prod-result');
-  if(!res)return;
-  if(!q){res.innerHTML='';return;}
-  const matches=PRODUCTS.filter(p=>p.c.toLowerCase().includes(q)||p.d.toLowerCase().includes(q)).slice(0,20);
-  if(!matches.length){res.innerHTML='<div class="empty">No products found</div>';return;}
-  res.innerHTML=matches.map(p=>{
-    const b=BALANCE[p.c]!==undefined?BALANCE[p.c]:p.q;
-    const daysSale=getDaysSinceLastSale(p.c);
-    const lastSale=getLastSaleDate(p.c);
-    const isIdle=daysSale>=(idleMonths*30)&&b>0;
-    return `<div class="card" onclick="openProdModal('${p.c}')" style="cursor:pointer;border-left:4px solid ${b<=0?'var(--red)':b<MIN_QTY?'var(--orange)':'var(--green)'}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-            <span class="code-tag">${p.c}</span>
-            <span class="chip">${p.f||''}</span>
-            ${isIdle?'<span class="idle-badge">⏰ '+Math.floor(daysSale/30)+'m idle</span>':''}
-          </div>
-          <div style="font-size:12px;color:#444;line-height:1.5">${p.d}</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:20px;font-weight:800;color:${b<=0?'var(--red)':b<MIN_QTY?'var(--orange)':'var(--green)'}">${b}</div>
-          <div style="font-size:10px;color:var(--grey)">Balance</div>
-          ${lastSale?`<div style="font-size:10px;color:var(--grey);margin-top:2px">Last: ${lastSale}</div>`:''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
+
 
 function openProdModal(code){
   const p=PRODUCTS.find(x=>x.c===code);
@@ -1623,26 +1586,7 @@ function openAddProductModal(){
   document.getElementById('add-prod-modal').style.display='flex';
 }
 function closeAddProductModal(){document.getElementById('add-prod-modal').style.display='none';}
-async function saveNewProduct(){
-  const code=document.getElementById('np-code').value.trim();
-  const family=document.getElementById('np-family').value;
-  const desc=document.getElementById('np-desc').value.trim();
-  const qty=parseInt(document.getElementById('np-qty').value)||0;
-  const sp=parseFloat(document.getElementById('np-sp')?.value)||0;
-  const err=document.getElementById('np-err');
-  if(!code){err.textContent='Enter product code.';return;}
-  if(!desc){err.textContent='Enter description.';return;}
-  if(PRODUCTS.find(p=>p.c.toLowerCase()===code.toLowerCase())){err.textContent='Code already exists!';return;}
-  err.textContent='';
-  PRODUCTS.push({c:code,d:desc,q:qty,f:family,sellingPrice:sp});
-  BALANCE[code]=qty;
-  // Save to Supabase
-  try{await sb.from('products').upsert({code,description:desc,family,opening_qty:qty,current_qty:qty,selling_price:sp||null});}catch(e){}
-  toast(`✓ ${code} added to product list!`,'success');
-  closeAddProductModal();
-  renderPicker(); renderStock();
-  if(document.getElementById('prod-search')?.value)searchProduct();
-}
+
 
 // ═══════════════════════════════════════════════════════════════
 // CUSTOMERS
@@ -1657,54 +1601,11 @@ function setCustFilter(f,btn){
   renderCustomers();
 }
 
-function renderCustomers(){
-  const q=(document.getElementById('cust-q')?.value||'').toLowerCase();
-  let list=CUSTOMERS_DB.filter(c=>c.type==='customer'||!c.type);
-  if(custFilter!=='all')list=list.filter(c=>c.gst_type===custFilter);
-  if(q)list=list.filter(c=>c.name.toLowerCase().includes(q)||
-    (c.primary_city||'').toLowerCase().includes(q)||
-    (c.business_type||'').toLowerCase().includes(q));
-  const el=document.getElementById('cust-list');
-  if(!el)return;
-  el.innerHTML=list.slice(0,80).map(c=>renderCustCard(c)).join('')||'<div class="empty"><div class="empty-icon">👥</div>No customers found</div>';
-}
 
-function renderSuppliers(){
-  const q=(document.getElementById('supp-q')?.value||'').toLowerCase();
-  let list=CUSTOMERS_DB.filter(c=>c.type==='supplier');
-  if(q)list=list.filter(c=>c.name.toLowerCase().includes(q));
-  const el=document.getElementById('supp-list');
-  if(!el)return;
-  el.innerHTML=list.slice(0,80).map(c=>renderCustCard(c,'supplier')).join('')||'<div class="empty"><div class="empty-icon">🏭</div>No suppliers found</div>';
-}
 
-function renderCustCard(c,type='customer'){
-  const ov=c.outstanding||0;
-  const priLabel=PRI_LABEL[c.priority]||c.priority||'';
-  const priColor=PRI_COLOR[c.priority]||'#aaa';
-  const assignedBadge=c.assigned_name?`<span class="chip blue">👤 ${c.assigned_name}</span>`:'';
-  const gstBadge=c.gst_type==='without_gst'?'<span class="chip">📄 No GST</span>':'<span class="chip green">📋 GST</span>';
-  const ownerBadge=c.owner_group_id?'<span class="chip orange">🔗 Linked</span>':'';
-  return `<div class="cust-card ${c.priority}" onclick="openCustModal('${c.id}')">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-      <div class="cust-name">${c.name}</div>
-      <span style="font-size:10px;font-weight:700;color:${priColor};white-space:nowrap">${priLabel}</span>
-    </div>
-    <div class="cust-meta">
-      ${c.orders?`<span>📦 ${c.orders} orders</span>`:''}
-      ${c.total_value?`<span>💰 ₹${Math.round(c.total_value).toLocaleString('en-IN')}</span>`:''}
-      ${c.days_since?`<span>📅 ${c.days_since}d ago</span>`:''}
-      ${c.primary_city?`<span>📍 ${c.primary_city}${c.primary_state?', '+c.primary_state:''}</span>`:''}
-      ${c.business_type?`<span>🏭 ${c.business_type}</span>`:''}
-      ${ov>0?`<span style="color:var(--red);font-weight:700">⚠ ₹${ov.toLocaleString('en-IN')} due</span>`:''}
-    </div>
-    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
-      ${gstBadge}${assignedBadge}${ownerBadge}
-      ${c.primary_phone?`<button class="btn btn-xs btn-wa" onclick="event.stopPropagation();window.open('https://wa.me/91${c.primary_phone}','_blank')">📱 WA</button>`:''}
-    </div>
-    ${c.notes?`<div style="font-size:10px;color:var(--grey);margin-top:6px;padding-top:6px;border-top:1px solid #F5F5F5">📝 ${c.notes}</div>`:''}
-  </div>`;
-}
+
+
+
 
 // ═══════════════════════════════════════════════════════════════
 // CUSTOMER MODAL (Full Detail + Edit)
@@ -1863,7 +1764,7 @@ async function saveCustNote(id){
   renderFollowup(); renderCustomers(); renderDashboard();
 }
 
-function closeCustModal(){document.getElementById('cust-modal').style.display='none';}
+
 
 // ═══════════════════════════════════════════════════════════════
 // NEW CUSTOMER / SUPPLIER FORM
@@ -2125,47 +2026,7 @@ function setFollowFilter(f,btn){
   else{const m={all:'ff-all',PAYMENT_DUE:'ff-pd',HIGH:'ff-hi',FOLLOW_NOW:'ff-fn',ACTIVE:'ff-ac',DORMANT:'ff-dm',TWO_MONTHS:'ff-2m',FOUR_MONTHS:'ff-4m',SIX_MONTHS:'ff-6m',ONE_YEAR:'ff-1y',TODAY:'ff-td'};const el=document.getElementById(m[f]);if(el)el.classList.add('active');}
   renderFollowup();
 }
-function renderFollowup(){
-  const q=(document.getElementById('follow-q')?.value||'').toLowerCase();
-  const staffF=document.getElementById('follow-staff')?.value||'';
-  const gstF=document.getElementById('follow-gst')?.value||'';
-  let list=CUSTOMERS_DB.filter(c=>c.type==='customer'||!c.type);
-  const t=today();
-  if(followFilter==='TWO_MONTHS')list=list.filter(c=>c.days_since>=60&&c.days_since<120).sort((a,b)=>b.days_since-a.days_since);
-  else if(followFilter==='FOUR_MONTHS')list=list.filter(c=>c.days_since>=120&&c.days_since<180).sort((a,b)=>b.days_since-a.days_since);
-  else if(followFilter==='SIX_MONTHS')list=list.filter(c=>c.days_since>=180&&c.days_since<300).sort((a,b)=>b.days_since-a.days_since);
-  else if(followFilter==='ONE_YEAR')list=list.filter(c=>c.days_since>=300).sort((a,b)=>b.days_since-a.days_since);
-  else if(followFilter==='TODAY')list=list.filter(c=>c.next_followup===t);
-  else if(followFilter!=='all')list=list.filter(c=>c.priority===followFilter);
-  if(q)list=list.filter(c=>c.name.toLowerCase().includes(q)||(c.primary_city||'').toLowerCase().includes(q));
-  if(staffF)list=list.filter(c=>c.assigned_to===staffF);
-  if(gstF)list=list.filter(c=>c.gst_type===gstF);
-  const el=document.getElementById('follow-list');
-  if(!el)return;
-  el.innerHTML=list.slice(0,80).map(c=>`
-    <div class="cust-card ${c.priority}" onclick="openCustModal('${c.id}')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
-        <div class="cust-name">${c.name}</div>
-        <span style="font-size:10px;font-weight:700;color:${PRI_COLOR[c.priority]||'#aaa'};white-space:nowrap">${PRI_LABEL[c.priority]||c.priority}</span>
-      </div>
-      <div class="cust-meta">
-        <span>📦 ${c.orders||0} orders</span>
-        <span>💰 ₹${Math.round(c.total_value||0).toLocaleString('en-IN')}</span>
-        <span>⏱ ${c.days_since||0} days ago</span>
-        ${c.primary_city?`<span>📍 ${c.primary_city}${c.primary_state?', '+c.primary_state:''}</span>`:''}
-        ${(c.outstanding||0)>0?`<span style="color:var(--red);font-weight:700">⚠ ₹${c.outstanding.toLocaleString('en-IN')} due</span>`:''}
-        ${c.avg_freq?`<span>Every ${c.avg_freq}d</span>`:''}
-      </div>
-      ${c.assigned_name?`<div style="font-size:10px;color:var(--blue);margin-top:4px">👤 ${c.assigned_name}</div>`:''}
-      ${c.notes?`<div style="font-size:10px;color:var(--grey);margin-top:5px;padding-top:5px;border-top:1px solid #F5F5F5">📝 ${c.notes}</div>`:''}
-      ${c.next_followup?`<div style="font-size:10px;color:${c.next_followup<=t?'var(--red)':'var(--blue)'};margin-top:3px;font-weight:600">📅 Next: ${c.next_followup}${c.next_followup===t?' — TODAY!':''}</div>`:''}
-      <div class="cust-actions">
-        ${c.primary_phone?`<button class="btn btn-xs btn-wa" onclick="event.stopPropagation();window.open('https://wa.me/91${c.primary_phone}','_blank')">📱 WA</button>`:''}
-        ${(c.outstanding||0)>0?`<button class="btn btn-xs btn-green" onclick="event.stopPropagation();openPaymentModal('${c.id}')">💰 Payment</button>`:''}
-        <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();openCustModal('${c.id}')">✏️ Note</button>
-      </div>
-    </div>`).join('')||'<div class="empty"><div class="empty-icon">📞</div>No customers match this filter</div>';
-}
+
 
 // ═══════════════════════════════════════════════════════════════
 // LEDGER
@@ -2703,16 +2564,30 @@ function today(){return new Date().toISOString().split('T')[0];}
 // ═══════════════════════════════════════════════════════════════
 // PWA & SERVICE WORKER
 // ═══════════════════════════════════════════════════════════════
+// Unregister old service workers first, then register fresh
 if('serviceWorker' in navigator){
-  let swReg=null;
-  navigator.serviceWorker.register('sw.js?v=7')
+  // First unregister ALL old service workers
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    const old=regs.filter(r=>!r.active?.scriptURL?.includes('v7'));
+    if(old.length){
+      Promise.all(old.map(r=>r.unregister())).then(()=>{
+        console.log('Old SW unregistered, registering v7...');
+        registerSW();
+      });
+    } else {
+      registerSW();
+    }
+  });
+} else { console.log('SW not supported'); }
+
+function registerSW(){
+  navigator.serviceWorker.register('sw.js?v=7&t='+Date.now())
     .then(reg=>{
-      swReg=reg;
-      // Check for updates every 5 minutes
-      setInterval(()=>reg.update(),5*60*1000);
-      // Check on page focus
-      document.addEventListener('visibilitychange',()=>{if(!document.hidden)reg.update();});
-      // Handle waiting worker
+      console.log('SW v7 registered');
+      setInterval(()=>reg.update(), 5*60*1000);
+      document.addEventListener('visibilitychange',()=>{
+        if(!document.hidden) reg.update();
+      });
       reg.addEventListener('updatefound',()=>{
         const nw=reg.installing;
         nw.addEventListener('statechange',()=>{
@@ -2721,12 +2596,11 @@ if('serviceWorker' in navigator){
           }
         });
       });
-    })
-    .catch(e=>console.log('SW error:',e));
+    }).catch(e=>console.log('SW failed:',e));
 
-  // Also handle controller change (after skipWaiting)
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    showUpdateBanner();
+    console.log('Controller changed - reloading');
+    window.location.reload(true);
   });
 
   navigator.serviceWorker.addEventListener('message',ev=>{
@@ -2734,7 +2608,7 @@ if('serviceWorker' in navigator){
   });
 }
 
-function showUpdateBanner(){
+if('serviceWorker' in navigator){function showUpdateBanner(){
   if(document.getElementById('update-banner'))return;
   const b=document.createElement('div');
   b.id='update-banner';
@@ -2785,7 +2659,6 @@ const FAMILY_COLORS={'Short Wave IR':'#FEE2E2','Medium Wave IR':'#DCFCE7','Ceram
 let pickerFamily='all', followFilter='all', stockFilter='all';
 let poSelQ={}, custEditId=null;
 let editingTxnId=null, editingItemIdx=null;
-let alertSettings={waAuto:true,waDaily:false,minQty:30,idleDays:60};
 
 // ── FAMILY TABS ─────────────────────────────────────────────────
 function initFamilyTabs(){
