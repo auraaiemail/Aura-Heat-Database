@@ -1111,14 +1111,29 @@ async function loadUsers(){
 }
 
 async function saveTxn(t){
-  setSS('Saving...','syncing');
-  const {error} = await sb.from('transactions').insert({data:t});
-  if(error){toast('Save failed: '+error.message,'error');setSS('Error','error');return false;}
+  // Add to local state INSTANTLY — no waiting for Supabase
   TRANSACTIONS.unshift(t);
-  logActivity('stock_entry',{ref:t.ref,party:t.party,type:t.type,items:t.items.length});
-  setSS('Saved','ok');
-  setTimeout(()=>setSS('Live','ok'),2000);
-  return true;
+  setSS('Syncing...','syncing');
+  
+  // Save to Supabase in background
+  sb.from('transactions').insert({data:t}).then(({error})=>{
+    if(error){
+      console.error('Sync error:',error.message);
+      setSS('Sync failed','error');
+      toast('⚠ Saved locally. Syncing...','warn');
+      // Retry after 4s
+      setTimeout(()=>{
+        sb.from('transactions').insert({data:t}).then(({error:e2})=>{
+          setSS(e2?'Sync error':'Synced ✓','ok');
+        });
+      },4000);
+    } else {
+      setSS('Synced ✓','ok');
+      logActivity('stock_entry',{ref:t.ref,party:t.party,type:t.type,items:t.items.length});
+      setTimeout(()=>setSS('Live','ok'),2000);
+    }
+  });
+  return true; // Always return true instantly
 }
 
 function subscribeRT(){
@@ -3432,6 +3447,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 // No service worker - direct load only
+
+function hardRefresh(){
+  toast('Refreshing...','info');
+  setTimeout(()=>{
+    window.location.href = window.location.pathname + '?v=' + Date.now();
+  }, 500);
+}
+
 function checkForUpdate(){
   toast('Checking for updates...','info');
   fetch('index.html?t='+Date.now(),{cache:'no-store'})
@@ -3444,7 +3467,8 @@ function checkForUpdate(){
     }).catch(()=>toast('Check internet connection','error'));
 }
 
-function showUpdateBanner(){
+function showUpdateBanner(){return; // disabled - no SW
+
   if(document.getElementById('update-banner'))return;
   const b=document.createElement('div');
   b.id='update-banner';
