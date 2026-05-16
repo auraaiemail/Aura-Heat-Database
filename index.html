@@ -326,6 +326,7 @@ tr:hover td{background:#FFFAF9}
     <span class="tb-badge" id="role-badge">Loading...</span>
     <div class="tb-right">
       <div class="sync-indicator"><div class="sync-dot" id="sdot"></div><span id="stxt" style="display:none">Sync</span></div>
+      <button onclick="hardRefresh()" title="Check for Updates" style="background:rgba(255,255,255,0.15);border:none;color:#fff;width:34px;height:34px;border-radius:6px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center" id="refresh-btn">🔄</button>
       <button class="tb-btn" onclick="doLogout()">Logout</button>
     </div>
   </div>
@@ -2030,6 +2031,12 @@ async function savePayment(){
   c.updated_at=new Date().toISOString();
   const ok=await saveCustomer(c);
   if(ok){
+    // Also save to payment_receipts table for history
+    sb.from('payment_receipts').insert({
+      date,customer_name:c.name,amount,payment_mode:mode,
+      reference_no:ref||'',notes:remarks||'',created_by_name:curName,
+      created_at:new Date().toISOString()
+    }).catch(e=>console.log('payment receipt save:',e));
     toast(`✓ ₹${amount.toLocaleString('en-IN')} recorded for ${c.name}`,'success');
     logActivity('payment_received',{customer:c.name,amount,mode});
     closePaymentModal();
