@@ -1219,9 +1219,13 @@ function checkAlerts(){
   const idleAlert=document.getElementById('idle-alert');
   if(idleAlert&&idle.length>0){
     idleAlert.style.display='block';
-    document.getElementById('idle-list').innerHTML=idle.slice(0,5).map(p=>
-      `<div style="font-size:11px;padding:3px 0">• <strong>${p.c}</strong> — ${p.d.substring(0,40)}... — Bal:${BALANCE[p.c]||0} — ${Math.floor(getDaysSinceLastSale(p.c)/30)}m idle</div>`
-    ).join('');
+    document.getElementById('idle-list').innerHTML=idle.slice(0,5).map(p=>{
+      const custsBought=[...new Set(TRANSACTIONS.filter(t=>t.type==='OUT'&&(t.items||[]).some(i=>i.code===p.c)).map(t=>t.party))].slice(0,3);
+      return `<div style="padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.06);cursor:pointer" onclick="switchPage('products');setTimeout(()=>{const el=document.getElementById('prod-search');if(el){el.value='${p.c}';searchProduct();}},300)">
+        <div style="font-size:12px"><strong style="color:var(--red)">${p.c}</strong> — Bal:${BALANCE[p.c]||0} — <span style="color:var(--orange)">${Math.floor(getDaysSinceLastSale(p.c)/30)}m idle</span></div>
+        ${custsBought.length?`<div style="font-size:10px;color:var(--grey);margin-top:2px">Last buyers: ${custsBought.join(', ')}</div>`:''}
+      </div>`;
+    }).join('');
   }
 
   // Customer stats
@@ -1450,12 +1454,14 @@ function showPartyAC(){
   const matches=CUSTOMERS_DB.filter(c=>c.name.toLowerCase().includes(q)).slice(0,8);
   if(!matches.length){box.style.display='none';return;}
   box.innerHTML=matches.map(c=>`
-    <div class="ac-item" onclick="selectParty('${c.name.replace(/'/g,"\\'")}')">
+    <div class="ac-item" onclick="selectParty('${q(c.name)}')">
       <div class="ac-name">${c.name}</div>
       <div class="ac-sub">${c.orders} orders · ₹${Math.round(c.total_value).toLocaleString('en-IN')}${c.outstanding>0?' · ⚠ ₹'+c.outstanding.toLocaleString('en-IN')+' due':''} · ${c.days_since}d ago</div>
     </div>`).join('');
   box.style.display='block';
 }
+
+function q(s){return (s||'').split("'").join("\\'");}
 function selectParty(name){
   document.getElementById('txn-party').value=name;
   hidePartyAC();
@@ -1551,7 +1557,7 @@ function openProdModal(code){
     </div></div>`:''}
     <div class="sec-hdr">👥 Customers Who Bought This Product</div>
     ${custList.length?custList.map(c=>`
-      <div class="prod-history-row" onclick="openCustByName('${c.name.replace(/'/g,"\\'")}')">
+      <div class="prod-history-row" onclick="openCustByName('${q(c.name)}')">
         <div style="flex:1"><strong>${c.name}</strong><div style="font-size:10px;color:var(--grey)">Last: ${c.lastDate}</div></div>
         <div style="text-align:right"><strong>${c.qty}</strong><div style="font-size:9px;color:var(--grey)">units</div></div>
       </div>`).join(''):'<div class="empty">No sales history yet</div>'}
@@ -1811,7 +1817,7 @@ function openNewCustModal(type='customer'){
     <div id="nc-companies">
       ${buildCompanyBlock(0,stateOpts)}
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="addCompanyBlock('${stateOpts.replace(/'/g,"\\'")}')">+ Add Another Company</button>
+    <button class="btn btn-ghost btn-sm" onclick="addCompanyBlock('${q(stateOpts)}')">+ Add Another Company</button>
 
     <div class="divider"></div>
     <div class="g2">
@@ -2213,12 +2219,62 @@ function openNewEnquiryModal(){
 }
 let _enqItemIdx=1;
 function buildEnqItem(idx){
-  return `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px" id="ei-${idx}">
-    <div style="flex:2"><input type="text" placeholder="Product code or description" class="enq-item-code"></div>
-    <div style="width:80px"><input type="number" placeholder="Qty" min="1" class="enq-item-qty"></div>
-    <div style="width:100px"><input type="number" placeholder="Price ₹" class="enq-item-price"></div>
-    <button onclick="document.getElementById('ei-${idx}').remove()" class="btn btn-xs btn-red" style="flex-shrink:0;margin-top:2px">✕</button>
+  return `<div style="margin-bottom:8px" id="ei-${idx}">
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <div style="flex:2;position:relative">
+        <input type="text" placeholder="Search product code or description..." class="enq-item-code" 
+          oninput="showEnqDropdown(this,${idx})"
+          onblur="setTimeout(()=>{const d=document.getElementById('edd-${idx}');if(d)d.remove()},200)"
+          autocomplete="off">
+        <div id="edd-${idx}"></div>
+      </div>
+      <div style="width:80px"><input type="number" placeholder="Qty" min="1" class="enq-item-qty"></div>
+      <div style="width:100px"><input type="number" placeholder="Price ₹" class="enq-item-price" ${curRole!=='admin'?'style="display:none"':''}></div>
+      <button onclick="document.getElementById('ei-${idx}').remove()" class="btn btn-xs btn-red" style="flex-shrink:0;margin-top:2px">✕</button>
+    </div>
+    <div id="ei-desc-${idx}" style="font-size:11px;color:var(--grey);margin-top:2px;padding-left:2px"></div>
   </div>`;
+}
+
+function showEnqDropdown(inp, idx){
+  const q=(inp.value||'').toLowerCase().trim();
+  const ddId='edd-'+idx;
+  let dd=document.getElementById(ddId);
+  if(!dd){
+    dd=document.createElement('div');
+    dd.id=ddId;
+    dd.style.cssText='position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--red);border-top:none;border-radius:0 0 8px 8px;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.1)';
+    inp.parentElement.appendChild(dd);
+  }
+  if(q.length<1){dd.style.display='none';return;}
+  const matches=PRODUCTS.filter(p=>p.c.toLowerCase().includes(q)||p.d.toLowerCase().includes(q)).slice(0,6);
+  if(!matches.length){dd.style.display='none';return;}
+  
+  dd.innerHTML='';
+  matches.forEach(p=>{
+    const b=typeof balance!=='undefined'?(balance[p.c]||0):p.q;
+    const div=document.createElement('div');
+    div.style.cssText='padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center';
+    div.innerHTML='<div><div style="font-family:monospace;font-weight:700;color:var(--red);font-size:12px">'+p.c+'</div><div style="font-size:11px;color:#555">'+p.d.substring(0,55)+'</div></div><span style="font-weight:700;color:'+(b<=0?'var(--red)':b<30?'var(--orange)':'#166534')+';font-size:13px;flex-shrink:0;margin-left:6px">Bal:'+b+'</span>';
+    div.onmouseover=function(){this.style.background='#FFF5F5'};
+    div.onmouseout=function(){this.style.background='#fff'};
+    div.onclick=(function(code,desc){
+      return function(){selectEnqProduct(idx,code,desc);}
+    })(p.c, p.d);
+    dd.appendChild(div);
+  });
+  dd.style.display='block';
+}
+
+function selectEnqProduct(idx, code, desc){
+  const row=document.getElementById('ei-'+idx);
+  if(!row)return;
+  const inp=row.querySelector('.enq-item-code');
+  if(inp)inp.value=code;
+  const descEl=document.getElementById('ei-desc-'+idx);
+  if(descEl)descEl.textContent=desc;
+  const dd=document.getElementById('edd-'+idx);
+  if(dd)dd.style.display='none';
 }
 function addEnqItem(){document.getElementById('enq-items').insertAdjacentHTML('beforeend',buildEnqItem(_enqItemIdx++));}
 async function saveEnquiry(){
@@ -2267,7 +2323,7 @@ function showSuppAC(){
   if(!q){box.style.display='none';return;}
   const matches=CUSTOMERS_DB.filter(c=>c.type==='supplier'&&c.name.toLowerCase().includes(q)).slice(0,6);
   if(!matches.length){box.style.display='none';return;}
-  box.innerHTML=matches.map(c=>`<div class="ac-item" onclick="document.getElementById('enq-supplier').value='${c.name.replace(/'/g,"\\'")}';hideSuppAC()"><div class="ac-name">${c.name}</div></div>`).join('');
+  box.innerHTML=matches.map(c=>`<div class="ac-item" onclick="document.getElementById('enq-supplier').value='${q(c.name)}';hideSuppAC()"><div class="ac-name">${c.name}</div></div>`).join('');
   box.style.display='block';
 }
 function hideSuppAC(){const b=document.getElementById('supp-ac');if(b)b.style.display='none';}
@@ -2692,7 +2748,7 @@ function renderFollowup(){
     const phone=contacts[0]?.mobile||c.phone||'';
     const companies=c.companies||[];
     const multiCo=companies.length>1;
-    return `<div class="cust-card ${c.priority||'ACTIVE'}" onclick="openCustView('${c.name.replace(/'/g,"\\'")}')">
+    return `<div class="cust-card ${c.priority||'ACTIVE'}" onclick="openCustView('${q(c.name)}')">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
         <div>
           <div style="font-size:14px;font-weight:700">${c.name}${multiCo?` <span class="badge badge-blue">🏢${companies.length}</span>`:''}</div>
@@ -2713,8 +2769,8 @@ function renderFollowup(){
       ${c.nextFollowup||c.next_followup?`<div style="font-size:11px;color:var(--blue);margin-bottom:6px">📅 Next: ${c.nextFollowup||c.next_followup}</div>`:''}
       <div style="display:flex;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
         ${phone?`<button class="btn btn-xs btn-wa" onclick="window.open('https://wa.me/91${phone.replace(/\s/g,'')}','_blank')">📱 WhatsApp</button>`:''}
-        ${(c.outstanding||0)>0?`<button class="btn btn-xs" style="background:#DCFCE7;color:#166534;border:1px solid #BBF7D0;font-weight:700;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer" onclick="event.stopPropagation();quickPayment('${c.name.replace(/'/g,"\\'")}',${ c.outstanding||0})">💰 Record Payment</button>`:''}
-        <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation();openCustEdit('${c.name.replace(/'/g,"\\'")}')" >✏️ Edit</button>
+        ${(c.outstanding||0)>0?`<button class="btn btn-xs" style="background:#DCFCE7;color:#166534;border:1px solid #BBF7D0;font-weight:700;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer" onclick="event.stopPropagation();quickPayment('${q(c.name)}',${ c.outstanding||0})">💰 Record Payment</button>`:''}
+        <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation();openCustEdit('${q(c.name)}')" >✏️ Edit</button>
       </div>
     </div>`;
   }).join('');
@@ -2753,7 +2809,7 @@ function renderCustCard(c, overrideType){
   const phone=contacts[0]?.mobile||c.phone||'';
   const multiCo=companies.length>1;
   const outAmt=c.outstanding||0;
-  return `<div class="cust-card ${c.priority||'ACTIVE'}" onclick="openCustView('${c.name.replace(/'/g,"\\'")}')">
+  return `<div class="cust-card ${c.priority||'ACTIVE'}" onclick="openCustView('${q(c.name)}')">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
       <div style="flex:1;overflow:hidden">
         <div style="font-size:14px;font-weight:700">${c.name}${multiCo?` <span class="badge badge-blue" title="${companies.map(co=>co.company_name).join(', ')}">🏢 ${companies.length} cos</span>`:''}</div>
@@ -2777,8 +2833,8 @@ function renderCustCard(c, overrideType){
     ${c.nextFollowup||c.next_followup?`<div style="font-size:11px;color:var(--blue);margin-bottom:4px">📅 Next follow-up: ${c.nextFollowup||c.next_followup}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
       ${phone?`<button class="btn btn-xs btn-wa" onclick="window.open('https://wa.me/91${phone.replace(/\s/g,'')}','_blank')">📱 WhatsApp</button>`:''}
-      <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation();openCustEdit('${c.name.replace(/'/g,"\\'")}')" >✏️ Edit</button>
-      <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation();openCustView('${c.name.replace(/'/g,"\\'")}')" >👁 View</button>
+      <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation();openCustEdit('${q(c.name)}')" >✏️ Edit</button>
+      <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation();openCustView('${q(c.name)}')" >👁 View</button>
     </div>
   </div>`;
 }
@@ -3064,7 +3120,9 @@ function closeCustModal(){
 
 // ── CUSTOMER VIEW MODAL ──────────────────────────────────────────
 function openCustView(name){
-  const c=CUSTOMERS.find(x=>x.name===name);if(!c)return;
+  // Try CUSTOMERS_DB first (original data), fallback to CUSTOMERS (injected)
+  const c=CUSTOMERS_DB?.find(x=>x.name===name)||CUSTOMERS.find(x=>x.name===name);
+  if(!c){toast('Customer not found','error');return;}
   const contacts=c.contacts||[];const companies=c.companies||[];
   // History
   const history=[];
@@ -3122,16 +3180,16 @@ function openCustView(name){
       <div class="field"><label>Assigned Staff</label><select id="vc-staff"><option value="">Not assigned</option></select></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      <button class="btn btn-primary btn-sm" onclick="saveCustNotes('${name.replace(/'/g,"\\'")}')" >💾 Save Notes</button>
-      ${(c.outstanding||0)>0?`<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;font-weight:700" onclick="quickPayment('${name.replace(/'/g,"\\'")}',${ c.outstanding||0})">💰 Record Payment</button>`:''}
-      <button class="btn btn-secondary btn-sm" onclick="closeViewCustModal();openCustEdit('${name.replace(/'/g,"\\'")}')" >✏️ Edit Details</button>
-      <button class="btn btn-secondary btn-sm" onclick="logFollowupCall('${name.replace(/'/g,"\\'")}')" >📞 Log Call</button>
+      <button class="btn btn-primary btn-sm" onclick="saveCustNotes('${q(name)}')" >💾 Save Notes</button>
+      ${(c.outstanding||0)>0?`<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;font-weight:700" onclick="quickPayment('${q(name)}',${ c.outstanding||0})">💰 Record Payment</button>`:''}
+      <button class="btn btn-secondary btn-sm" onclick="closeViewCustModal();openCustEdit('${q(name)}')" >✏️ Edit Details</button>
+      <button class="btn btn-secondary btn-sm" onclick="logFollowupCall('${q(name)}')" >📞 Log Call</button>
     </div>
     ${history.length?`<div style="font-size:11px;font-weight:700;color:var(--grey);text-transform:uppercase;margin-bottom:8px">📋 Purchase History (${history.length})</div>
     <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
       <table style="width:100%;border-collapse:collapse;font-size:11px">
         <thead style="background:var(--grey3)"><tr><th style="padding:6px 10px;text-align:left">Date</th><th style="padding:6px 10px;text-align:left">Invoice</th><th style="padding:6px 10px;text-align:left">Code</th><th style="padding:6px 10px;text-align:right">Qty</th></tr></thead>
-        <tbody>${history.slice(0,20).map(h=>`<tr style="border-top:1px solid var(--border)"><td style="padding:6px 10px">${h.date}</td><td style="padding:6px 10px;font-weight:600">${h.ref||'—'}</td><td style="padding:6px 10px;font-family:monospace;color:var(--red);font-weight:700;cursor:pointer" onclick="closeViewCustModal();searchProductByCode('${h.code.replace(/'/g,"\\'")}')">${h.code}</td><td style="padding:6px 10px;text-align:right;font-weight:700;color:var(--red)">−${h.qty}</td></tr>`).join('')}</tbody>
+        <tbody>${history.slice(0,20).map(h=>`<tr style="border-top:1px solid var(--border)"><td style="padding:6px 10px">${h.date}</td><td style="padding:6px 10px;font-weight:600">${h.ref||'—'}</td><td style="padding:6px 10px;font-family:monospace;color:var(--red);font-weight:700;cursor:pointer" onclick="closeViewCustModal();searchProductByCode('${q(h.code)}')">${h.code}</td><td style="padding:6px 10px;text-align:right;font-weight:700;color:var(--red)">−${h.qty}</td></tr>`).join('')}</tbody>
       </table>
     </div>`:''}`;
 
@@ -3198,6 +3256,18 @@ function searchProductByCode(code){
 function searchProduct(){
   const q=(document.getElementById('prod-search')?.value||'').trim();
   const el=document.getElementById('prod-detail-view');
+  // Ensure dropdown exists
+  if(!document.getElementById('prod-search-dropdown')){
+    const inp=document.getElementById('prod-search');
+    if(inp&&inp.parentElement){
+      const dd=document.createElement('div');
+      dd.id='prod-search-dropdown';
+      dd.style.cssText='position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--red);border-top:none;border-radius:0 0 8px 8px;max-height:300px;overflow-y:auto;z-index:100;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.1)';
+      inp.parentElement.style.position='relative';
+      inp.parentElement.appendChild(dd);
+      inp.addEventListener('blur',()=>setTimeout(()=>{dd.style.display='none'},200));
+    }
+  }
   if(!el)return;
   if(q.length<2){el.innerHTML='';return;}
   const p=PRODUCTS.find(x=>x.c.toUpperCase()===q.toUpperCase())||
@@ -3256,7 +3326,7 @@ function renderProductDetail(p,el){
         <div class="card-body" style="max-height:180px;overflow-y:auto">
           ${Object.values(uniqueCusts).sort((a,b)=>new Date(b.lastDate)-new Date(a.lastDate)).slice(0,8).map(c=>`
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
-              <div><div style="font-weight:600;color:var(--red);cursor:pointer" onclick="openCustView('${c.name.replace(/'/g,"\\'")}')"> ${c.name}</div><div style="color:var(--grey)">Last: ${c.lastDate} · ${c.orders} orders</div></div>
+              <div><div style="font-weight:600;color:var(--red);cursor:pointer" onclick="openCustView('${q(c.name)}')"> ${c.name}</div><div style="color:var(--grey)">Last: ${c.lastDate} · ${c.orders} orders</div></div>
               <div style="font-weight:700">${c.totalQty} units</div>
             </div>`).join('')||'<div class="empty">No sales history</div>'}
         </div>
@@ -3266,7 +3336,7 @@ function renderProductDetail(p,el){
       <div class="card-header"><div class="card-title">📋 Full Sales History</div><span style="font-size:12px;color:var(--grey)">${custHistory.length} items</span></div>
       <div class="table-wrap" style="border:none;border-radius:0;box-shadow:none">
         <table><thead><tr><th>Date</th><th>Invoice</th><th>Customer</th><th style="text-align:right">Qty</th></tr></thead>
-        <tbody>${custHistory.slice(0,25).map(h=>`<tr><td>${h.date}</td><td style="font-weight:600">${h.ref||'—'}</td><td style="color:var(--red);cursor:pointer" onclick="openCustView('${h.name.replace(/'/g,"\\'")}')">${h.name}</td><td style="text-align:right;font-weight:700;color:var(--red)">−${h.qty}</td></tr>`).join('')}</tbody>
+        <tbody>${custHistory.slice(0,25).map(h=>`<tr><td>${h.date}</td><td style="font-weight:600">${h.ref||'—'}</td><td style="color:var(--red);cursor:pointer" onclick="openCustView('${q(h.name)}')">${h.name}</td><td style="text-align:right;font-weight:700;color:var(--red)">−${h.qty}</td></tr>`).join('')}</tbody>
         </table>
       </div>
     </div>`:''}`;
@@ -3335,11 +3405,11 @@ function renderPOPicker(family){
   el.innerHTML=prods.slice(0,80).map(p=>{
     const bal=b[p.c]!==undefined?b[p.c]:p.q;
     const sel=poSelQ2[p.c]!==undefined;
-    return `<div class="prod-row${sel?' selected':''}" onclick="togglePOProd('${p.c.replace(/'/g,"\\'")}')">
+    return `<div class="prod-row${sel?' selected':''}" onclick="togglePOProd('${q(p.c)}')">
       <div class="chk">${sel?'✓':''}</div>
       <div style="overflow:hidden"><div class="prod-code">${p.c}</div><div class="prod-desc">${p.d}</div></div>
       <div class="bal ${bal<=0?'bal-out':bal<30?'bal-low':'bal-ok'}">${bal}</div>
-      <div onclick="event.stopPropagation()" style="text-align:center">${sel?`<input class="qty-input" type="number" min="1" value="${poSelQ2[p.c]||1}" oninput="poSelQ2['${p.c.replace(/'/g,"\\'")}']=(parseInt(this.value)||1)" onclick="event.stopPropagation()">`:' <span style="color:#D1D5DB">—</span>'}</div>
+      <div onclick="event.stopPropagation()" style="text-align:center">${sel?`<input class="qty-input" type="number" min="1" value="${poSelQ2[p.c]||1}" oninput="poSelQ2['${q(p.c)}']=(parseInt(this.value)||1)" onclick="event.stopPropagation()">`:' <span style="color:#D1D5DB">—</span>'}</div>
       <div style="text-align:center;font-size:12px;color:var(--grey)">—</div>
     </div>`;
   }).join('')||'<div class="empty">No products</div>';
@@ -3463,6 +3533,18 @@ function renderPayments(){
       <div style="font-weight:700;color:#166534">₹${(p.amount||0).toLocaleString('en-IN')}</div>
     </div>`).join('');
 }
+
+function selectProductFromSearch(code){
+  const p=PRODUCTS.find(x=>x.c===code);
+  if(!p)return;
+  const inp=document.getElementById('prod-search');
+  if(inp)inp.value=code;
+  const dd=document.getElementById('prod-search-dropdown');
+  if(dd)dd.style.display='none';
+  const el=document.getElementById('prod-detail-view');
+  if(el)renderProductDetail(p,el);
+}
+
 function hardRefresh(){
   toast('Refreshing...','info');
   setTimeout(()=>{
@@ -3494,5 +3576,16 @@ if('serviceWorker' in navigator){
 }
 
 </script>
+
+<!-- View Customer Modal -->
+<div class="modal-overlay" id="view-cust-modal" style="display:none" onclick="if(event.target===this)closeViewCustModal()">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header">
+      <div class="modal-title" id="view-cust-title">Customer</div>
+      <button class="modal-close" onclick="closeViewCustModal()">×</button>
+    </div>
+    <div class="modal-body" id="view-cust-body" style="padding:20px"></div>
+  </div>
+</div>
 </body>
 </html>
