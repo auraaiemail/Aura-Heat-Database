@@ -3442,6 +3442,20 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 // No service worker - direct load only
 
+
+function renderPayments(){
+  // Payments use modal in this version - no separate list needed
+  // Load recent payments into payment history section if exists
+  const el = document.getElementById('payment-history');
+  if(!el) return;
+  if(!payments || !payments.length){el.innerHTML='<div class="empty">No payments yet</div>';return;}
+  el.innerHTML = payments.slice(0,20).map(p=>`
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <div><div style="font-weight:600">${p.customer_name||p.party||'—'}</div>
+      <div style="color:var(--grey)">${p.date} · ${p.payment_mode||'—'} · ${p.reference_no||''}</div></div>
+      <div style="font-weight:700;color:#166534">₹${(p.amount||0).toLocaleString('en-IN')}</div>
+    </div>`).join('');
+}
 function hardRefresh(){
   toast('Refreshing...','info');
   setTimeout(()=>{
@@ -3461,7 +3475,7 @@ function checkForUpdate(){
     }).catch(()=>toast('Check internet connection','error'));
 }
 
-function {}
+function showUpdateBanner(){}
 
 
 
