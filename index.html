@@ -1823,7 +1823,7 @@ function openCustModal(id){
     <div class="field"><label>Handled By (Staff)</label>
       <select id="cm-assigned">
         <option value="">-- Not Assigned --</option>
-        ${USERS_LIST.map(u=>`<option value="${u.id}" ${c.assigned_to===u.id?'selected:'':''} data-name="${u.name}">${u.name} (${u.role})</option>`).join('')}
+        ${USERS_LIST.map(u=>`<option value="${u.id}" ${c.assigned_to===u.id?'selected':''} data-name="${u.name}">${u.name} (${u.role})</option>`).join('')}
       </select>
     </div>
     <div class="action-row">
