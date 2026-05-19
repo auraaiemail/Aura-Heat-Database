@@ -2537,10 +2537,67 @@ async function saveEnquiry(){
   renderPurchaseList();
 }
 async function raisePO(id){
-  const po=prompt('Enter PO Number:');
-  if(!po)return;
-  await sb.from('purchase_enquiries').update({status:'po_raised',po_number:po}).eq('id',id);
-  toast('PO raised ✓','success'); loadEnquiries();
+  const e=ENQUIRIES.find(x=>x.id==id);
+  if(!e)return;
+  
+  // Build PO modal
+  const existing=document.getElementById('po-quick-modal');
+  if(existing)existing.remove();
+  
+  const modal=document.createElement('div');
+  modal.id='po-quick-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML=`
+    <div style="background:#fff;border-radius:14px;padding:24px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-weight:800;font-size:16px;color:var(--red)">🛒 Raise Purchase Order</div>
+        <button onclick="document.getElementById('po-quick-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">×</button>
+      </div>
+      <div style="background:#F9FAFB;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px">
+        <div><strong>Supplier:</strong> ${e.supplier_name}</div>
+        <div><strong>Date:</strong> ${e.date} &nbsp;|&nbsp; <strong>Items:</strong> ${(e.items||[]).length}</div>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>PO Number *</label>
+        <input type="text" id="po-number-input" placeholder="e.g. PO-2026-001" style="width:100%;font-size:14px">
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>Expected Delivery Date</label>
+        <input type="date" id="po-delivery-date" style="width:100%;font-size:14px">
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label>PO Notes</label>
+        <textarea id="po-notes-input" rows="2" placeholder="Delivery terms, payment terms..." style="width:100%;font-size:13px"></textarea>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="confirmRaisePO('${id}')" class="btn btn-primary" style="flex:1">✅ Confirm PO</button>
+        <button onclick="document.getElementById('po-quick-modal').remove()" class="btn btn-ghost" style="flex:1">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('po-number-input').focus();
+}
+
+async function confirmRaisePO(id){
+  const po=document.getElementById('po-number-input')?.value.trim();
+  const delivery=document.getElementById('po-delivery-date')?.value||'';
+  const notes=document.getElementById('po-notes-input')?.value||'';
+  if(!po){toast('Enter PO number','error');return;}
+  
+  const {error}=await sb.from('purchase_enquiries').update({
+    status:'po_raised', po_number:po,
+    expected_delivery:delivery, po_notes:notes,
+    updated_at:new Date().toISOString()
+  }).eq('id',id);
+  
+  // Update local
+  const e=ENQUIRIES.find(x=>x.id==id);
+  if(e){e.status='po_raised';e.po_number=po;e.expected_delivery=delivery;}
+  
+  document.getElementById('po-quick-modal')?.remove();
+  toast('PO '+po+' raised ✓','success');
+  renderPurchaseList();
+  if(!error) loadEnquiries();
 }
 async function markReceived(id){
   if(!confirm('Mark this purchase as received? This will update stock IN.'))return;
@@ -2555,7 +2612,75 @@ async function markReceived(id){
   await sb.from('purchase_enquiries').update({status:'received'}).eq('id',id);
   toast('Received & stock updated ✓','success'); loadEnquiries();
 }
-function viewEnquiry(id){const e=ENQUIRIES.find(x=>x.id===id);if(!e)return;toast('Full view coming soon','');}
+function viewEnquiry(id){
+  const e=ENQUIRIES.find(x=>x.id==id);
+  if(!e)return;
+  
+  const existing=document.getElementById('enq-view-modal');
+  if(existing)existing.remove();
+  
+  const items=Array.isArray(e.items)?e.items:(typeof e.items==='string'?JSON.parse(e.items||'[]'):[]);
+  const statusColor=e.status==='received'?'#166534':e.status==='po_raised'?'#1d4ed8':'#92400e';
+  const statusLabel=e.status==='received'?'✅ Received':e.status==='po_raised'?'📋 PO Raised':'🔍 Enquiry';
+  
+  const modal=document.createElement('div');
+  modal.id='enq-view-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:40px';
+  
+  const itemsHTML=items.length?items.map(it=>`
+    <tr style="border-bottom:1px solid #F3F4F6">
+      <td style="padding:8px;font-family:monospace;font-size:12px;color:var(--red)">${it.code||'—'}</td>
+      <td style="padding:8px;font-size:12px">${PRODUCTS.find(p=>p.c===it.code)?.d?.substring(0,50)||'—'}</td>
+      <td style="padding:8px;text-align:center;font-weight:700">${it.qty||0}</td>
+      <td style="padding:8px;text-align:right">${it.buying_price?'₹'+it.buying_price.toLocaleString('en-IN'):'—'}</td>
+      <td style="padding:8px;text-align:center;color:${(BALANCE[it.code]||0)<=0?'var(--red)':'#166534'}">${BALANCE[it.code]||0}</td>
+    </tr>`).join(''):'<tr><td colspan="5" style="padding:16px;text-align:center;color:#6B7280">No items</td></tr>';
+  
+  modal.innerHTML=`
+    <div style="background:#fff;border-radius:14px;padding:24px;width:700px;max-width:96vw;max-height:88vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-weight:800;font-size:16px">Purchase Enquiry Details</div>
+        <button onclick="document.getElementById('enq-view-modal').remove()" style="background:none;border:none;font-size:22px;cursor:pointer">×</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div style="background:#F9FAFB;border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:#6B7280;font-weight:700">SUPPLIER</div>
+          <div style="font-weight:700;margin-top:4px">${e.supplier_name||'—'}</div>
+        </div>
+        <div style="background:#F9FAFB;border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:#6B7280;font-weight:700">DATE</div>
+          <div style="font-weight:700;margin-top:4px">${e.date||'—'}</div>
+        </div>
+        <div style="background:#F9FAFB;border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:#6B7280;font-weight:700">STATUS</div>
+          <div style="font-weight:700;margin-top:4px;color:${statusColor}">${statusLabel}</div>
+        </div>
+      </div>
+      ${e.po_number?`<div style="background:#EFF6FF;border-radius:8px;padding:12px;margin-bottom:16px">
+        <span style="font-size:12px;color:#1d4ed8;font-weight:700">PO: ${e.po_number}</span>
+        ${e.expected_delivery?` &nbsp;|&nbsp; Delivery: ${e.expected_delivery}`:''}
+      </div>`:''}
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+        <thead>
+          <tr style="background:#F3F4F6;font-size:11px;font-weight:700;color:#6B7280">
+            <th style="padding:8px;text-align:left">CODE</th>
+            <th style="padding:8px;text-align:left">DESCRIPTION</th>
+            <th style="padding:8px;text-align:center">QTY</th>
+            <th style="padding:8px;text-align:right">PRICE</th>
+            <th style="padding:8px;text-align:center">BALANCE</th>
+          </tr>
+        </thead>
+        <tbody>${itemsHTML}</tbody>
+      </table>
+      ${e.notes?`<div style="background:#F9FAFB;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"><strong>Notes:</strong> ${e.notes}</div>`:''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${e.status==='enquiry'?`<button onclick="document.getElementById('enq-view-modal').remove();raisePO('${e.id}')" class="btn btn-primary">🛒 Raise PO</button>`:''}
+        ${e.status==='po_raised'?`<button onclick="document.getElementById('enq-view-modal').remove();markReceived('${e.id}')" class="btn btn-primary" style="background:#166534">✅ Mark Received</button>`:''}
+        <button onclick="document.getElementById('enq-view-modal').remove()" class="btn btn-ghost">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
 function closeEnqModal(){document.getElementById('enq-modal').style.display='none';_enqItemIdx=1;}
 function showSuppAC(){
   const q=(document.getElementById('enq-supplier')?.value||'').toLowerCase();
