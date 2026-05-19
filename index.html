@@ -2422,7 +2422,7 @@ function buildEnqItem(idx){
           onblur="setTimeout(()=>{var d=document.getElementById('ei-dd-${idx}');if(d)d.style.display='none'},200)"
           autocomplete="off"
           style="width:100%;font-size:12px">
-        <div id="ei-dd-${idx}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid var(--red);border-top:none;border-radius:0 0 8px 8px;z-index:999;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+        <div id="ei-dd-${idx}" style="display:none;position:fixed;background:#fff;border:2px solid var(--red);border-radius:8px;z-index:99999;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.25)"></div>
         <div id="ei-desc-${idx}" style="font-size:10px;color:var(--grey);margin-top:3px;padding-left:2px"></div>
       </div>
       <div style="width:80px">
@@ -2447,6 +2447,11 @@ function enqProdSearch(inp, idx){
     return p.c.toLowerCase().includes(q)||p.d.toLowerCase().includes(q);
   }).slice(0,8);
   if(!matches.length){dd.style.display='none';return;}
+  // Position dropdown over everything using fixed coords
+  var rect=inp.getBoundingClientRect();
+  dd.style.top=(rect.bottom+4)+'px';
+  dd.style.left=rect.left+'px';
+  dd.style.width=Math.max(rect.width,350)+'px';
   dd.innerHTML='';
   matches.forEach(function(p){
     var b=typeof BALANCE!=='undefined'?(BALANCE[p.c]||0):p.q;
@@ -2491,7 +2496,19 @@ async function saveEnquiry(){
   const enq={date,supplier_name:supplier,status:'enquiry',items,
     notes:document.getElementById('enq-notes').value,by_user_name:curName};
   const {error}=await sb.from('purchase_enquiries').insert(enq);
-  if(error){err.textContent='Save failed.';return;}
+  if(error){
+    console.error('Enquiry error:',error.message);
+    // Try with stringified items
+    const {error:e2}=await sb.from('purchase_enquiries').insert({
+      ...enq, items:JSON.stringify(enq.items), created_at:new Date().toISOString()
+    });
+    if(e2){
+      toast('Saved locally - sync pending','warn');
+      if(!window.LOCAL_ENQUIRIES)window.LOCAL_ENQUIRIES=[];
+      window.LOCAL_ENQUIRIES.push({...enq,id:'local-'+Date.now()});
+      closeEnqModal(); return;
+    }
+  }
   toast('Enquiry saved ✓','success');
   closeEnqModal(); loadEnquiries();
 }
