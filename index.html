@@ -2373,9 +2373,13 @@ async function deleteTxn(txnId){
 // ═══════════════════════════════════════════════════════════════
 let ENQUIRIES=[];
 async function loadEnquiries(){
-  const {data}=await sb.from('purchase_enquiries').select('*').order('created_at',{ascending:false});
-  ENQUIRIES=data||[];
-  renderPurchaseList();
+  try{
+    const {data,error}=await sb.from('purchase_enquiries').select('*').order('created_at',{ascending:false});
+    if(error){console.error('loadEnquiries error:',error.message);return;}
+    console.log('Enquiries loaded:',data?.length,'records',data);
+    ENQUIRIES=data||[];
+    renderPurchaseList();
+  }catch(e){console.error('loadEnquiries exception:',e);}
 }
 function setPurchaseFilter(f,btn){
   purchaseFilter=f;
