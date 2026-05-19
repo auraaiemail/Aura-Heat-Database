@@ -1016,7 +1016,7 @@ async function initApp(){
   checkAlerts();
   renderDashboard();
   renderPicker();
-  await Promise.all([loadTxns(), loadCustomersDB(), loadUsers()]);
+  await Promise.all([loadTxns(), loadCustomersDB(), loadUsers(), loadEnquiries()]);
   subscribeRT();
   setSS('Live','ok');
 }
@@ -2399,7 +2399,6 @@ function openNewEnquiryModal(){
         <div>PRODUCT CODE / DESCRIPTION</div><div>QTY</div><div>PRICE ₹</div><div></div>
       </div>
       <div id="enq-items" style="max-height:380px;overflow-y:auto">
-        ${buildEnqItem(0)}
       </div>
     </div>
     <div class="field"><label>Notes / Special Requirements</label>
@@ -2410,6 +2409,9 @@ function openNewEnquiryModal(){
       <span class="err" id="enq-err"></span>
     </div>`;
   document.getElementById('enq-modal').style.display='flex';
+  // Reset index and add first item
+  _enqItemIdx=0;
+  document.getElementById('enq-items').insertAdjacentHTML('beforeend',buildEnqItem(_enqItemIdx++));
 }
 let _enqItemIdx=1;
 function buildEnqItem(idx){
