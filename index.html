@@ -2065,10 +2065,11 @@ async function saveNewCust(){
   if(!name){err.textContent='Enter at least one contact name or company name.';return;}
 
   // Business type / app type
-  let biztype=document.getElementById('nc-biztype').value;
-  let apptype=document.getElementById('nc-apptype').value;
-  if(biztype==='__new__'){biztype=prompt('Enter new business type:')||'';}
-  if(apptype==='__new__'){apptype=prompt('Enter new application type:')||'';}
+  let biztype=document.getElementById('nc-biztype')?.value||'';
+  let apptype=document.getElementById('nc-apptype')?.value||'';
+  // Skip __new__ entries - don't prompt
+  if(biztype==='__new__') biztype='';
+  if(apptype==='__new__') apptype='';
   if(biztype&&!BUSINESS_TYPES.includes(biztype))BUSINESS_TYPES.push(biztype);
   if(apptype&&!APP_TYPES.includes(apptype))APP_TYPES.push(apptype);
 
