@@ -2480,7 +2480,47 @@ async function cancelEnquiry(id){
 }
 
 async function deleteEnquiry(id){
-  if(!confirm('Permanently delete this enquiry? Cannot be undone.'))return;
+  const e=ENQUIRIES.find(function(x){return x.id==id;});
+  if(!e)return;
+  
+  var msg='Permanently delete this enquiry?';
+  if(e.status==='received'){
+    msg='This enquiry was marked RECEIVED. Deleting will REVERSE the stock IN transaction. Continue?';
+  }
+  if(!confirm(msg))return;
+  
+  // If received, reverse the stock transaction
+  if(e.status==='received'){
+    var items=[];
+    try{
+      if(Array.isArray(e.items))items=e.items;
+      else if(typeof e.items==='string')items=JSON.parse(e.items||'[]');
+    }catch(ex){items=[];}
+    
+    if(items.length>0){
+      // Find and delete the matching IN transaction
+      var ref=e.po_number||('PO-'+String(id).slice(0,6));
+      var matchTxn=TRANSACTIONS.find(function(t){
+        return t.type==='IN'&&t.party===e.supplier_name&&
+          (t.ref===ref||t.ref===e.po_number);
+      });
+      if(matchTxn){
+        // Delete from Supabase
+        var {data:rows}=await sb.from('transactions').select('id,data');
+        var row=rows?.find(function(r){return r.data?.id==matchTxn.id;});
+        if(row) await sb.from('transactions').delete().eq('id',row.id);
+        // Remove from local
+        TRANSACTIONS=TRANSACTIONS.filter(function(t){return t.id!==matchTxn.id;});
+        recalcBal();
+        checkAlerts();
+        renderDashboard();
+        toast('Stock reversed for '+items.length+' item(s)','warn');
+      } else {
+        toast('Stock transaction not found - reversal skipped','warn');
+      }
+    }
+  }
+  
   await sb.from('purchase_enquiries').delete().eq('id',id);
   ENQUIRIES=ENQUIRIES.filter(function(x){return x.id!=id;});
   toast('Enquiry deleted','success');
@@ -2764,11 +2804,14 @@ async function markReceived(id){
   }
   
   // Update status
-  await sb.from('purchase_enquiries').update({
-    status:'received',
-    received_date:today(),
-    updated_at:new Date().toISOString()
+  const {error:upErr}=await sb.from('purchase_enquiries').update({
+    status:'received'
   }).eq('id',id);
+  if(upErr){
+    console.error('Status update error:',upErr.message);
+    // Try alternate field names
+    await sb.from('purchase_enquiries').update({status:'received',notes:(enq.notes||'')+' [RECEIVED]'}).eq('id',id);
+  }
   
   // Update local array
   const eIdx=ENQUIRIES.findIndex(function(x){return x.id==id;});
@@ -2786,7 +2829,13 @@ function viewEnquiry(id){
   const existing=document.getElementById('enq-view-modal');
   if(existing)existing.remove();
   
-  const items=Array.isArray(e.items)?e.items:(typeof e.items==='string'?JSON.parse(e.items||'[]'):[]);
+  let items=[];
+  try{
+    if(Array.isArray(e.items)) items=e.items;
+    else if(typeof e.items==='string') items=JSON.parse(e.items||'[]');
+    else if(e.items) items=[e.items];
+  }catch(ex){items=[];}
+  console.log('Enquiry items:',items); // debug
   const statusColor=e.status==='received'?'#166534':e.status==='po_raised'?'#1d4ed8':'#92400e';
   const statusLabel=e.status==='received'?'✅ Received':e.status==='po_raised'?'📋 PO Raised':'🔍 Enquiry';
   
@@ -2797,7 +2846,7 @@ function viewEnquiry(id){
   const itemsHTML=items.length?items.map(it=>`
     <tr style="border-bottom:1px solid #F3F4F6">
       <td style="padding:8px;font-family:monospace;font-size:12px;color:var(--red)">${it.code||'—'}</td>
-      <td style="padding:8px;font-size:12px">${(PRODUCTS.find(p=>p.c===it.code)?.d||it.desc||it.description||it.code||'—').substring(0,55)}</td>
+      <td style="padding:8px;font-size:12px">${(PRODUCTS.find(p=>p.c===it.code||p.c===it.code?.trim())?.d||it.desc||it.description||it.name||it.code||'—').substring(0,60)}</td>
       <td style="padding:8px;text-align:center;font-weight:700">${it.qty||0}</td>
       <td style="padding:8px;text-align:right">${it.buying_price?'₹'+it.buying_price.toLocaleString('en-IN'):'—'}</td>
       <td style="padding:8px;text-align:center;color:${(BALANCE[it.code]||0)<=0?'var(--red)':'#166534'}">${BALANCE[it.code]||0}</td>
