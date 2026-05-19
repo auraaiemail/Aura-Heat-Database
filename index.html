@@ -835,8 +835,8 @@ tr:hover td{background:#FFFAF9}
 </div>
 
 <!-- Purchase Enquiry Modal -->
-<div class="modal-overlay" id="enq-modal" style="display:none" onclick="if(event.target===this)closeEnqModal()">
-  <div class="modal" style="max-width:800px;width:95vw">
+<div class="modal-overlay" id="enq-modal" style="display:none;align-items:flex-start;padding-top:20px" onclick="if(event.target===this)closeEnqModal()">
+  <div class="modal" style="max-width:98vw;width:1100px;max-height:95vh;overflow-y:auto">
     <div class="modal-title"><span id="enq-modal-title">New Purchase Enquiry</span><button class="modal-close" onclick="closeEnqModal()">×</button></div>
     <div id="enq-modal-body"></div>
   </div>
@@ -2381,21 +2381,30 @@ function renderPurchaseList(){
 function openNewEnquiryModal(){
   document.getElementById('enq-modal-title').textContent='New Purchase Enquiry';
   document.getElementById('enq-modal-body').innerHTML=`
-    <div class="g2">
-      <div class="field"><label>Supplier Name</label>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px">
+      <div class="field" style="grid-column:span 2"><label>Supplier Name</label>
         <div class="ac-wrap">
-          <input type="text" id="enq-supplier" placeholder="Search supplier..." oninput="showSuppAC()" onblur="setTimeout(hideSuppAC,200)">
+          <input type="text" id="enq-supplier" placeholder="Search supplier name..." oninput="showSuppAC()" onblur="setTimeout(hideSuppAC,200)" style="font-size:14px">
           <div class="ac-dropdown" id="supp-ac"></div>
         </div>
       </div>
-      <div class="field"><label>Enquiry Date</label><input type="date" id="enq-date" value="${today()}"></div>
+      <div class="field"><label>Enquiry Date</label><input type="date" id="enq-date" value="${today()}" style="font-size:14px"></div>
     </div>
-    <div class="sec-hdr">Products Required</div>
-    <div id="enq-items">
-      ${buildEnqItem(0)}
+    <div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px;color:var(--red)">📦 Products Required</div>
+        <button class="btn btn-ghost btn-sm" onclick="addEnqItem()">+ Add Product</button>
+      </div>
+      <div style="display:grid;grid-template-columns:3fr 80px 100px 36px;gap:6px;padding:6px 8px;background:#F3F4F6;border-radius:6px;font-size:11px;font-weight:700;color:#6B7280;margin-bottom:4px">
+        <div>PRODUCT CODE / DESCRIPTION</div><div>QTY</div><div>PRICE ₹</div><div></div>
+      </div>
+      <div id="enq-items" style="max-height:380px;overflow-y:auto">
+        ${buildEnqItem(0)}
+      </div>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="addEnqItem()" style="margin-bottom:12px">+ Add Product</button>
-    <div class="field"><label>Notes</label><textarea id="enq-notes" rows="2" placeholder="Special requirements..."></textarea></div>
+    <div class="field"><label>Notes / Special Requirements</label>
+      <textarea id="enq-notes" rows="2" placeholder="Delivery timeline, quality specs, packaging..." style="font-size:13px"></textarea>
+    </div>
     <div class="action-row">
       <button class="btn btn-primary" onclick="saveEnquiry()">💾 Save Enquiry</button>
       <span class="err" id="enq-err"></span>
@@ -2404,9 +2413,9 @@ function openNewEnquiryModal(){
 }
 let _enqItemIdx=1;
 function buildEnqItem(idx){
-  return `<div style="margin-bottom:10px;background:#F9FAFB;border-radius:8px;padding:10px" id="ei-${idx}">
-    <div style="display:flex;gap:8px;align-items:flex-start">
-      <div style="flex:3;position:relative">
+  return `<div style="margin-bottom:6px" id="ei-${idx}">
+    <div style="display:grid;grid-template-columns:3fr 80px 100px 36px;gap:6px;align-items:start">
+      <div style="position:relative">
         <input type="text" placeholder="Search product code or description..." 
           class="enq-item-code" id="ei-code-${idx}"
           oninput="enqProdSearch(this,${idx})"
@@ -2467,7 +2476,7 @@ function enqProdSearch(inp, idx){
   dd.style.display='block';
 }
 function addEnqItem(){document.getElementById('enq-items').insertAdjacentHTML('beforeend',buildEnqItem(_enqItemIdx++));}
-async function saveEnquiry(){
+async async function saveEnquiry(){
   const supplier=document.getElementById('enq-supplier').value.trim();
   const date=document.getElementById('enq-date').value;
   const err=document.getElementById('enq-err');
