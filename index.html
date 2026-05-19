@@ -1963,17 +1963,64 @@ function buildCompanyBlock(idx,stateOpts){
     <button class="remove-btn" onclick="document.getElementById('coblock-${idx}').remove()">✕</button>
     <div class="field"><label>Company Name</label><input type="text" class="nc-coname" placeholder="Company name"></div>
     <div class="g2">
-      <div class="field"><label>GST Number</label><input type="text" class="nc-cogst" placeholder="22AAAAA0000A1Z5" maxlength="15"></div>
-      <div class="field"><label>Door / Plot No.</label><input type="text" class="nc-codoor" placeholder="123, Plot No..."></div>
+      <div class="field"><label>Country</label>
+        <select class="nc-cocountry" onchange="toggleCountryFields(this,${idx})" style="width:100%">
+          <option value="India">🇮🇳 India (Domestic)</option>
+          <option value="China">🇨🇳 China</option>
+          <option value="Germany">🇩🇪 Germany</option>
+          <option value="USA">🇺🇸 USA</option>
+          <option value="Japan">🇯🇵 Japan</option>
+          <option value="South Korea">🇰🇷 South Korea</option>
+          <option value="Taiwan">🇹🇼 Taiwan</option>
+          <option value="Italy">🇮🇹 Italy</option>
+          <option value="UK">🇬🇧 UK</option>
+          <option value="other">Other (type below)</option>
+        </select>
+      </div>
+      <div class="field" id="coblock-custom-country-${idx}" style="display:none">
+        <label>Specify Country</label>
+        <input type="text" class="nc-cocountry-custom" placeholder="Country name">
+      </div>
     </div>
-    <div class="field"><label>Street Name</label><input type="text" class="nc-costreet" placeholder="Street / Road name"></div>
-    <div class="g3">
-      <div class="field"><label>Area / Locality</label><input type="text" class="nc-coarea" placeholder="Area name"></div>
-      <div class="field"><label>City</label><input type="text" class="nc-cocity" placeholder="City"></div>
-      <div class="field"><label>State</label><select class="nc-costate"><option value="">Select state</option>${stateOpts}</select></div>
+    <div id="coblock-india-${idx}">
+      <div class="g2">
+        <div class="field"><label>GST Number</label><input type="text" class="nc-cogst" placeholder="22AAAAA0000A1Z5" maxlength="15"></div>
+        <div class="field"><label>Door / Plot No.</label><input type="text" class="nc-codoor" placeholder="123, Plot No..."></div>
+      </div>
+      <div class="field"><label>Street Name</label><input type="text" class="nc-costreet" placeholder="Street / Road name"></div>
+      <div class="g3">
+        <div class="field"><label>Area / Locality</label><input type="text" class="nc-coarea" placeholder="Area name"></div>
+        <div class="field"><label>City</label><input type="text" class="nc-cocity" placeholder="City"></div>
+        <div class="field"><label>State</label><select class="nc-costate"><option value="">Select state</option>${stateOpts}</select></div>
+      </div>
+      <div class="field"><label>Pincode</label><input type="text" class="nc-copin" placeholder="600001" maxlength="6" style="width:120px"></div>
     </div>
-    <div class="field"><label>Pincode</label><input type="text" class="nc-copin" placeholder="600001" maxlength="6" style="width:120px"></div>
+    <div id="coblock-import-${idx}" style="display:none">
+      <div class="field"><label>City / Province</label><input type="text" class="nc-cocity" placeholder="City or province"></div>
+      <div class="field"><label>Full Address</label><textarea class="nc-costreet" placeholder="Full address including postal code" rows="2" style="width:100%;resize:vertical"></textarea></div>
+      <div class="field"><label>Website / Contact URL</label><input type="text" class="nc-copin" placeholder="www.supplier.com"></div>
+    </div>
   </div>`;
+}
+
+function toggleCountryFields(sel, idx){
+  var country = sel.value;
+  var indiaDiv = document.getElementById('coblock-india-'+idx);
+  var importDiv = document.getElementById('coblock-import-'+idx);
+  var customDiv = document.getElementById('coblock-custom-country-'+idx);
+  if(country === 'India'){
+    if(indiaDiv) indiaDiv.style.display='';
+    if(importDiv) importDiv.style.display='none';
+    if(customDiv) customDiv.style.display='none';
+  } else if(country === 'other'){
+    if(indiaDiv) indiaDiv.style.display='none';
+    if(importDiv) importDiv.style.display='';
+    if(customDiv) customDiv.style.display='';
+  } else {
+    if(indiaDiv) indiaDiv.style.display='none';
+    if(importDiv) importDiv.style.display='';
+    if(customDiv) customDiv.style.display='none';
+  }
 }
 
 let _contactIdx=1, _companyIdx=1;
@@ -2007,7 +2054,10 @@ async function saveNewCust(){
     address_area:b.querySelector('.nc-coarea')?.value.trim()||'',
     city:b.querySelector('.nc-cocity')?.value.trim()||'',
     state:b.querySelector('.nc-costate')?.value||'',
-    pincode:b.querySelector('.nc-copin')?.value.trim()||''
+    pincode:b.querySelector('.nc-copin')?.value.trim()||'',
+    country:(b.querySelector('.nc-cocountry')?.value==='other'
+      ? b.querySelector('.nc-cocountry-custom')?.value.trim()
+      : b.querySelector('.nc-cocountry')?.value)||'India'
   })).filter(c=>c.company_name||c.city);
 
   if(!contacts.length&&!companies.length){err.textContent='Add at least one contact or company.';return;}
