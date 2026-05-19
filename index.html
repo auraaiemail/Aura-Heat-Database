@@ -2476,7 +2476,7 @@ function enqProdSearch(inp, idx){
   dd.style.display='block';
 }
 function addEnqItem(){document.getElementById('enq-items').insertAdjacentHTML('beforeend',buildEnqItem(_enqItemIdx++));}
-async async function saveEnquiry(){
+async function saveEnquiry(){
   const supplier=document.getElementById('enq-supplier').value.trim();
   const date=document.getElementById('enq-date').value;
   const err=document.getElementById('enq-err');
