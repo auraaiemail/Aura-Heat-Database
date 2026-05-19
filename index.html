@@ -492,12 +492,24 @@ tr:hover td{background:#FFFAF9}
           <div class="g2">
             <div class="field"><label>Search Product Code or Description</label>
               <div class="ac-wrap">
-                <input type="text" id="prod-search" placeholder="Enter code or description..." oninput="searchProduct()">
+                <input type="text" id="prod-search" placeholder="Enter code or description..." oninput="searchProduct()" autocomplete="off">
               </div>
             </div>
             <div class="field" style="align-self:end">
               <button class="btn btn-primary" onclick="openAddProductModal()">+ Add New Product</button>
             </div>
+          </div>
+          <!-- Family filter buttons -->
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px" id="prod-family-btns">
+            <button class="pill active" onclick="setProdFamily('all',this)">All</button>
+            <button class="pill" onclick="setProdFamily('Short Wave IR',this)">⚡ SW IR</button>
+            <button class="pill" onclick="setProdFamily('Medium Wave IR',this)">🌊 MW IR</button>
+            <button class="pill" onclick="setProdFamily('Ceramic IR Heater',this)">🔴 Ceramic</button>
+            <button class="pill" onclick="setProdFamily('Quartz Heater',this)">💎 Quartz</button>
+            <button class="pill" onclick="setProdFamily('Tubular Heater',this)">🔧 Tubular</button>
+            <button class="pill" onclick="setProdFamily('UV Lamp',this)">🔵 UV</button>
+            <button class="pill" onclick="setProdFamily('Cartridge Heater',this)">🟠 Cartridge</button>
+            <button class="pill" onclick="setProdFamily('IR Module',this)">📦 Module</button>
           </div>
         </div>
         <div id="prod-result"></div>
@@ -824,7 +836,7 @@ tr:hover td{background:#FFFAF9}
 
 <!-- Purchase Enquiry Modal -->
 <div class="modal-overlay" id="enq-modal" style="display:none" onclick="if(event.target===this)closeEnqModal()">
-  <div class="modal">
+  <div class="modal" style="max-width:800px;width:95vw">
     <div class="modal-title"><span id="enq-modal-title">New Purchase Enquiry</span><button class="modal-close" onclick="closeEnqModal()">×</button></div>
     <div id="enq-modal-body"></div>
   </div>
@@ -839,12 +851,6 @@ tr:hover td{background:#FFFAF9}
 </div>
 
 <!-- Update Install Banner -->
-<div id="update-banner" style="display:none;position:fixed;top:60px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--red),var(--orange));color:#fff;padding:10px 16px;border-radius:10px;z-index:998;box-shadow:var(--shadow2);display:flex;align-items:center;gap:10px;font-size:12px;font-weight:600;white-space:nowrap">
-  🔄 App updated!
-  <button onclick="window.location.reload()" style="background:#fff;color:var(--red);border:none;border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:11px">Reload Now</button>
-  <button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:6px;padding:5px 8px;cursor:pointer">✕</button>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <!-- DATA -->
@@ -1489,12 +1495,21 @@ function renderStock(){
 // ═══════════════════════════════════════════════════════════════
 // PRODUCT SEARCH & DETAIL
 // ═══════════════════════════════════════════════════════════════
+var prodFamilyFilter='all';
+function setProdFamily(fam,btn){
+  prodFamilyFilter=fam;
+  document.querySelectorAll('#prod-family-btns .pill').forEach(function(b){b.classList.remove('active');});
+  if(btn)btn.classList.add('active');
+  searchProduct();
+}
 function searchProduct(){
   const q=(document.getElementById('prod-search')?.value||'').toLowerCase().trim();
   const res=document.getElementById('prod-result');
   if(!res)return;
-  if(!q){res.innerHTML='';return;}
-  const matches=PRODUCTS.filter(p=>p.c.toLowerCase().includes(q)||p.d.toLowerCase().includes(q)).slice(0,20);
+  if(!q&&prodFamilyFilter==='all'){res.innerHTML='';return;}
+  var filtered=PRODUCTS;
+  if(prodFamilyFilter!=='all')filtered=filtered.filter(function(p){return p.f===prodFamilyFilter;});
+  const matches=filtered.filter(p=>(!q)||(p.c.toLowerCase().includes(q)||p.d.toLowerCase().includes(q))).slice(0,30);
   if(!matches.length){res.innerHTML='<div class="empty">No products found</div>';return;}
   res.innerHTML=matches.map(p=>{
     const b=BALANCE[p.c]!==undefined?BALANCE[p.c]:p.q;
@@ -2314,12 +2329,67 @@ function openNewEnquiryModal(){
 }
 let _enqItemIdx=1;
 function buildEnqItem(idx){
-  return `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px" id="ei-${idx}">
-    <div style="flex:2"><input type="text" placeholder="Product code or description" class="enq-item-code"></div>
-    <div style="width:80px"><input type="number" placeholder="Qty" min="1" class="enq-item-qty"></div>
-    <div style="width:100px"><input type="number" placeholder="Price ₹" class="enq-item-price"></div>
-    <button onclick="document.getElementById('ei-${idx}').remove()" class="btn btn-xs btn-red" style="flex-shrink:0;margin-top:2px">✕</button>
+  return `<div style="margin-bottom:10px;background:#F9FAFB;border-radius:8px;padding:10px" id="ei-${idx}">
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <div style="flex:3;position:relative">
+        <input type="text" placeholder="Search product code or description..." 
+          class="enq-item-code" id="ei-code-${idx}"
+          oninput="enqProdSearch(this,${idx})"
+          onblur="setTimeout(()=>{var d=document.getElementById('ei-dd-${idx}');if(d)d.style.display='none'},200)"
+          autocomplete="off"
+          style="width:100%;font-size:12px">
+        <div id="ei-dd-${idx}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid var(--red);border-top:none;border-radius:0 0 8px 8px;z-index:999;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+        <div id="ei-desc-${idx}" style="font-size:10px;color:var(--grey);margin-top:3px;padding-left:2px"></div>
+      </div>
+      <div style="width:80px">
+        <input type="number" placeholder="Qty" min="1" class="enq-item-qty" style="width:100%;font-size:12px">
+      </div>
+      <div style="width:100px">
+        <input type="number" placeholder="Price ₹" class="enq-item-price" style="width:100%;font-size:12px">
+      </div>
+      <button onclick="document.getElementById('ei-${idx}').remove()" 
+        class="btn btn-xs btn-red" style="flex-shrink:0;margin-top:2px">✕</button>
+    </div>
   </div>`;
+}
+
+function enqProdSearch(inp, idx){
+  var q=(inp.value||'').toLowerCase().trim();
+  var dd=document.getElementById('ei-dd-'+idx);
+  var desc=document.getElementById('ei-desc-'+idx);
+  if(!dd)return;
+  if(q.length<1){dd.style.display='none';return;}
+  var matches=PRODUCTS.filter(function(p){
+    return p.c.toLowerCase().includes(q)||p.d.toLowerCase().includes(q);
+  }).slice(0,8);
+  if(!matches.length){dd.style.display='none';return;}
+  dd.innerHTML='';
+  matches.forEach(function(p){
+    var b=typeof BALANCE!=='undefined'?(BALANCE[p.c]||0):p.q;
+    var row=document.createElement('div');
+    row.style.cssText='padding:8px 12px;cursor:pointer;border-bottom:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center';
+    var left=document.createElement('div');
+    var c1=document.createElement('div');
+    c1.style.cssText='font-family:monospace;font-weight:700;color:var(--red);font-size:12px';
+    c1.textContent=p.c;
+    var c2=document.createElement('div');
+    c2.style.cssText='font-size:11px;color:#555';
+    c2.textContent=p.d.substring(0,60);
+    left.appendChild(c1);left.appendChild(c2);
+    var bs=document.createElement('span');
+    bs.style.cssText='font-weight:700;font-size:13px;flex-shrink:0;margin-left:8px;color:'+(b<=0?'var(--red)':b<30?'var(--orange)':'#166534');
+    bs.textContent='Bal:'+b;
+    row.appendChild(left);row.appendChild(bs);
+    row.onmouseover=function(){this.style.background='#FFF5F5';};
+    row.onmouseout=function(){this.style.background='';};
+    (function(prod){row.onclick=function(){
+      inp.value=prod.c;
+      if(desc)desc.textContent=prod.d;
+      dd.style.display='none';
+    };})(p);
+    dd.appendChild(row);
+  });
+  dd.style.display='block';
 }
 function addEnqItem(){document.getElementById('enq-items').insertAdjacentHTML('beforeend',buildEnqItem(_enqItemIdx++));}
 async function saveEnquiry(){
@@ -2702,7 +2772,7 @@ if('serviceWorker' in navigator){
   });
   navigator.serviceWorker.addEventListener('message',event=>{
     if(event.data?.type==='CACHE_UPDATED'){
-      document.getElementById('update-banner').style.display='flex';
+      // banner disabled //
       setTimeout(()=>{document.getElementById('update-banner').style.display='none';},30000);
     }
   });
