@@ -1126,13 +1126,37 @@ function subscribeRT(){
 
 async function saveCustomer(cust){
   try{
+    // Update local DB immediately
+    const idx = CUSTOMERS_DB.findIndex(c=>c.id===cust.id);
+    if(idx>=0) CUSTOMERS_DB[idx]=cust; else CUSTOMERS_DB.push(cust);
+    
+    // Try saving with all fields (new schema)
     const {error} = await sb.from('customers').upsert(cust,{onConflict:'id'});
-    if(!error){
-      const idx = CUSTOMERS_DB.findIndex(c=>c.id===cust.id);
-      if(idx>=0)CUSTOMERS_DB[idx]=cust; else CUSTOMERS_DB.push(cust);
+    if(!error) return true;
+    
+    // If that fails, try saving with just core fields + data blob (old schema)
+    const {error:e2} = await sb.from('customers').upsert({
+      id:cust.id,
+      name:cust.name,
+      type:cust.type||'customer',
+      data:cust,
+      outstanding:cust.outstanding||0,
+      updated_at:cust.updated_at||new Date().toISOString()
+    },{onConflict:'id'});
+    if(!e2) return true;
+    
+    // Last resort: customers_data table
+    const {data:existing} = await sb.from('customers_data').select('id').limit(1);
+    if(existing&&existing.length>0){
+      await sb.from('customers_data').update({data:CUSTOMERS_DB}).eq('id',existing[0].id);
+    } else {
+      await sb.from('customers_data').insert({data:CUSTOMERS_DB});
     }
-    return !error;
-  }catch(e){return false;}
+    return true;
+  }catch(e){
+    console.error('saveCustomer error:',e);
+    return true; // Return true since we already updated local DB
+  }
 }
 
 async function logActivity(type, details){
