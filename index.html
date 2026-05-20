@@ -6,7 +6,9 @@
 <title>Aura Heat Energy</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#BF1B2C">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Aura Heat">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -2465,7 +2467,7 @@ async function saveEditEnquiry(){
   const updates={supplier_name:supplier,date:date,items:items,
     notes:document.getElementById('enq-notes').value||'',
     updated_at:new Date().toISOString()};
-  const {error}=await sb.from('purchase_enquiries').update(updates).eq('id',id);
+  const {error}=await sb.from('purchase_enquiries').update(updates).eq('id',String(id));
   const e=ENQUIRIES.find(function(x){return x.id==id;});
   if(e)Object.assign(e,updates);
   closeEnqModal();
@@ -2476,7 +2478,7 @@ async function saveEditEnquiry(){
 
 async function cancelEnquiry(id){
   if(!confirm('Cancel this enquiry?'))return;
-  await sb.from('purchase_enquiries').update({status:'cancelled',updated_at:new Date().toISOString()}).eq('id',id);
+  await sb.from('purchase_enquiries').update({status:'cancelled'}).eq('id',String(id));
   const e=ENQUIRIES.find(function(x){return x.id==id;});
   if(e)e.status='cancelled';
   toast('Enquiry cancelled','warn');
@@ -2525,7 +2527,7 @@ async function deleteEnquiry(id){
     }
   }
   
-  await sb.from('purchase_enquiries').delete().eq('id',id);
+  await sb.from('purchase_enquiries').delete().eq('id',String(id));
   ENQUIRIES=ENQUIRIES.filter(function(x){return x.id!=id;});
   toast('Enquiry deleted','success');
   renderPurchaseList();
@@ -2762,11 +2764,11 @@ async function confirmRaisePO(id){
   const notes=document.getElementById('po-notes-input')?.value||'';
   if(!po){toast('Enter PO number','error');return;}
   
-  const {error}=await sb.from('purchase_enquiries').update({
-    status:'po_raised', po_number:po,
-    expected_delivery:delivery, po_notes:notes,
-    updated_at:new Date().toISOString()
-  }).eq('id',id);
+  const strId2=String(id);
+  const {error,data:poUpData}=await sb.from('purchase_enquiries').update({
+    status:'po_raised', po_number:po, notes:notes
+  }).eq('id',strId2).select();
+  console.log('PO update result:',poUpData,'error:',error);
   
   // Update local
   const e=ENQUIRIES.find(x=>x.id==id);
@@ -2808,13 +2810,17 @@ async function markReceived(id){
   }
   
   // Update status
-  const {error:upErr}=await sb.from('purchase_enquiries').update({
-    status:'received'
-  }).eq('id',id);
+  // Ensure id is string for UUID comparison
+  const strId=String(id);
+  const {error:upErr,data:upData}=await sb.from('purchase_enquiries')
+    .update({status:'received'})
+    .eq('id',strId)
+    .select();
+  console.log('Update result:',upData,'error:',upErr);
   if(upErr){
-    console.error('Status update error:',upErr.message);
-    // Try alternate field names
-    await sb.from('purchase_enquiries').update({status:'received',notes:(enq.notes||'')+' [RECEIVED]'}).eq('id',id);
+    console.error('Status update error:',upErr.message,upErr.code);
+    toast('Update failed: '+upErr.message,'error');
+    return;
   }
   
   // Update local array
@@ -2839,7 +2845,9 @@ function viewEnquiry(id){
     else if(typeof e.items==='string') items=JSON.parse(e.items||'[]');
     else if(e.items) items=[e.items];
   }catch(ex){items=[];}
-  console.log('Enquiry items:',items); // debug
+  console.log('Enquiry id:',e.id,'status:',e.status);
+  console.log('Raw items field:',e.items);
+  console.log('Parsed items:',items);
   const statusColor=e.status==='received'?'#166534':e.status==='po_raised'?'#1d4ed8':'#92400e';
   const statusLabel=e.status==='received'?'✅ Received':e.status==='po_raised'?'📋 PO Raised':'🔍 Enquiry';
   
