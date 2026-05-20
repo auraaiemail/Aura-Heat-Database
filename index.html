@@ -2667,23 +2667,38 @@ async function saveEnquiry(){
   const supplier=document.getElementById('enq-supplier').value.trim();
   const date=document.getElementById('enq-date').value;
   const err=document.getElementById('enq-err');
-  const items=[...document.querySelectorAll('.enq-item-code')].map((el,i)=>({
-    code:el.value.trim(),
-    qty:parseInt(document.querySelectorAll('.enq-item-qty')[i]?.value)||0,
-    buying_price:parseFloat(document.querySelectorAll('.enq-item-price')[i]?.value)||0,
-    qty_available:BALANCE[el.value.trim()]||0
-  })).filter(it=>it.code&&it.qty>0);
+  const itemCodes=document.querySelectorAll('.enq-item-code');
+  const itemQtys=document.querySelectorAll('.enq-item-qty');
+  const itemPrices=document.querySelectorAll('.enq-item-price');
+  const items=[...itemCodes].map((el,i)=>{
+    const code=el.value.trim();
+    const qty=parseInt(itemQtys[i]?.value)||1; // default qty=1
+    const price=parseFloat(itemPrices[i]?.value)||0;
+    const prod=PRODUCTS.find(p=>p.c===code);
+    return {
+      code:code,
+      desc:prod?.d||code,
+      qty:qty,
+      buying_price:price,
+      qty_available:BALANCE[code]||0
+    };
+  }).filter(it=>it.code); // only filter empty code, qty defaults to 1
+  console.log('Items to save:',items);
   if(!supplier){err.textContent='Enter supplier name.';return;}
   if(!items.length){err.textContent='Add at least one product.';return;}
   // Try multiple field combinations to match table schema
+  const total=items.reduce((s,it)=>s+(it.qty*(it.buying_price||0)),0);
   const baseEnq = {
     date: date,
     supplier_name: supplier,
     status: 'enquiry',
     items: items,
     notes: document.getElementById('enq-notes').value||'',
+    total_amount: total,
+    created_by_name: curName,
     created_at: new Date().toISOString()
   };
+  console.log('Saving enquiry:',baseEnq);
   
   // Attempt 1: with by_user_name
   let {error} = await sb.from('purchase_enquiries').insert({...baseEnq, by_user_name: curName});
