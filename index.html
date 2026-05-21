@@ -2163,8 +2163,152 @@ function closeNewCustModal(){
 
 function openEditCustModal(id){
   closeCustModal();
-  // For now reopen full form with existing data
-  toast('Edit mode — coming in next update','');
+  const c=CUSTOMERS_DB.find(x=>x.id===id);
+  if(!c){toast('Customer not found','error');return;}
+  const type=c.type||'customer';
+  const isSupplier=type==='supplier';
+
+  document.getElementById('new-cust-title').textContent=isSupplier?'✏️ Edit Supplier':'✏️ Edit Customer';
+  
+  const stateOpts=INDIA_STATES.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const bizOpts=BUSINESS_TYPES.map(b=>`<option value="${b}">${b}</option>`).join('');
+  const appOpts=APP_TYPES.map(a=>`<option value="${a}">${a}</option>`).join('');
+
+  // Build contacts HTML from existing data
+  const contacts=c.contacts||[{name:'',phone:'',designation:'',email:''}];
+  const contactsHTML=contacts.map((ct,i)=>buildContactBlock(i)).join('');
+  
+  // Build companies HTML
+  const companies=c.companies||[{}];
+  const companiesHTML=companies.map((co,i)=>buildCompanyBlock(i,stateOpts)).join('');
+
+  document.getElementById('new-cust-body').innerHTML=`
+    <input type="hidden" id="nc-type" value="${type}">
+    <input type="hidden" id="nc-edit-id" value="${id}">
+
+    <div class="sec-hdr">Contact Persons (up to 5)</div>
+    <div id="nc-contacts">${contactsHTML}</div>
+    <button class="btn btn-ghost btn-sm" onclick="addContactBlock()" style="margin-bottom:14px">+ Add Contact Person</button>
+
+    <div class="sec-hdr">Companies & Addresses (up to 5)</div>
+    <div id="nc-companies">${companiesHTML}</div>
+    <button class="btn btn-ghost btn-sm" onclick="addCompanyBlock()" style="margin-bottom:14px">+ Add Company / Address</button>
+
+    ${!isSupplier?`
+    <div class="sec-hdr">Business Profile</div>
+    <div class="g2">
+      <div class="field"><label>Business Type</label>
+        <select id="nc-biztype"><option value="">-- Select --</option>${bizOpts}</select></div>
+      <div class="field"><label>Application Type</label>
+        <select id="nc-apptype"><option value="">-- Select --</option>${appOpts}</select></div>
+    </div>`:''}
+
+    <div class="field"><label>Priority</label>
+      <select id="nc-priority">
+        <option value="WARM">Warm</option>
+        <option value="HIGH">High</option>
+        <option value="FOLLOW_NOW">Follow Now</option>
+        <option value="PAYMENT_DUE">Payment Due</option>
+        <option value="ACTIVE">Active</option>
+        <option value="DORMANT">Dormant</option>
+      </select>
+    </div>
+    <div class="field"><label>Notes / Handover</label>
+      <textarea id="nc-notes" rows="2" placeholder="Notes...">${c.notes||''}</textarea></div>
+    <div class="action-row">
+      <button class="btn btn-primary" onclick="saveEditCust()">💾 Update ${isSupplier?'Supplier':'Customer'}</button>
+      <span class="err" id="nc-err"></span>
+    </div>`;
+
+  // Show modal
+  document.getElementById('new-cust-modal').style.display='flex';
+
+  // Pre-fill contact fields after render
+  setTimeout(()=>{
+    contacts.forEach((ct,i)=>{
+      const b=document.getElementById('ccblock-'+i)||document.querySelector('#nc-contacts .contact-block:nth-child('+(i+1)+')');
+      if(!b)return;
+      const inp=b.querySelectorAll('input');
+      if(inp[0])inp[0].value=ct.name||'';
+      if(inp[1])inp[1].value=ct.designation||'';
+      if(inp[2])inp[2].value=ct.phone||ct.mobile||'';
+      if(inp[3])inp[3].value=ct.email||'';
+    });
+    companies.forEach((co,i)=>{
+      const b=document.getElementById('coblock-'+i);
+      if(!b)return;
+      b.querySelector('.nc-coname')&&(b.querySelector('.nc-coname').value=co.company_name||co.name||'');
+      b.querySelector('.nc-cogst')&&(b.querySelector('.nc-cogst').value=co.gst_number||co.gst||'');
+      b.querySelector('.nc-codoor')&&(b.querySelector('.nc-codoor').value=co.door||'');
+      b.querySelector('.nc-costreet')&&(b.querySelector('.nc-costreet').value=co.address_street||co.street||'');
+      b.querySelector('.nc-coarea')&&(b.querySelector('.nc-coarea').value=co.address_area||co.area||'');
+      b.querySelector('.nc-cocity')&&(b.querySelector('.nc-cocity').value=co.city||'');
+      b.querySelector('.nc-costate')&&(b.querySelector('.nc-costate').value=co.state||'');
+      b.querySelector('.nc-copin')&&(b.querySelector('.nc-copin').value=co.pincode||'');
+    });
+    const pri=document.getElementById('nc-priority');
+    if(pri)pri.value=c.priority||'WARM';
+    const biz=document.getElementById('nc-biztype');
+    if(biz)biz.value=c.business_type||'';
+    const app=document.getElementById('nc-apptype');
+    if(app)app.value=c.application_type||'';
+  },100);
+}
+
+async function saveEditCust(){
+  const id=document.getElementById('nc-edit-id')?.value;
+  const type=document.getElementById('nc-type').value;
+  const err=document.getElementById('nc-err');
+  const c=CUSTOMERS_DB.find(x=>x.id===id);
+  if(!c){err.textContent='Customer not found.';return;}
+
+  // Collect contacts
+  const contacts=[...document.querySelectorAll('#nc-contacts .contact-block')].map(b=>{
+    const inp=b.querySelectorAll('input');
+    return {name:(inp[0]?.value||'').trim(),designation:(inp[1]?.value||'').trim(),
+      phone:(inp[2]?.value||'').trim(),email:(inp[3]?.value||'').trim()};
+  }).filter(ct=>ct.name||ct.phone);
+
+  // Collect companies
+  const companies=[...document.querySelectorAll('#nc-companies .contact-block')].map(b=>({
+    company_name:(b.querySelector('.nc-coname')?.value||'').trim(),
+    gst_number:(b.querySelector('.nc-cogst')?.value||'').trim(),
+    door:(b.querySelector('.nc-codoor')?.value||'').trim(),
+    address_street:(b.querySelector('.nc-costreet')?.value||'').trim(),
+    address_area:(b.querySelector('.nc-coarea')?.value||'').trim(),
+    city:(b.querySelector('.nc-cocity')?.value||'').trim(),
+    state:(b.querySelector('.nc-costate')?.value||''),
+    pincode:(b.querySelector('.nc-copin')?.value||'').trim(),
+    country:(b.querySelector('.nc-cocountry')?.value==='other'
+      ?b.querySelector('.nc-cocountry-custom')?.value.trim()
+      :b.querySelector('.nc-cocountry')?.value)||'India'
+  })).filter(co=>co.company_name||co.city);
+
+  if(!companies[0]?.company_name){err.textContent='Company name is required.';return;}
+
+  // Update customer object
+  Object.assign(c,{
+    name:companies[0].company_name,
+    contacts,companies,
+    primary_phone:contacts[0]?.phone||c.primary_phone||'',
+    primary_city:companies[0]?.city||c.primary_city||'',
+    primary_state:companies[0]?.state||c.primary_state||'',
+    business_type:document.getElementById('nc-biztype')?.value||c.business_type||'',
+    application_type:document.getElementById('nc-apptype')?.value||c.application_type||'',
+    priority:document.getElementById('nc-priority')?.value||c.priority||'WARM',
+    notes:document.getElementById('nc-notes')?.value||'',
+    updated_at:new Date().toISOString()
+  });
+
+  const ok=await saveCustomer(c);
+  if(ok){
+    toast((type==='supplier'?'Supplier':'Customer')+' updated ✓','success');
+    document.getElementById('new-cust-modal').style.display='none';
+    renderCustomers();
+    renderSuppliers();
+  } else {
+    err.textContent='Save failed. Try again.';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
