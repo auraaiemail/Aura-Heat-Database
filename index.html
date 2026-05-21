@@ -605,7 +605,7 @@ tr:hover td{background:#FFFAF9}
         <div class="toolbar">
           <div class="search-box" style="flex:1;min-width:180px;position:relative">
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>
-            <input type="text" id="led-q" placeholder="Search invoice, party, product..." oninput="renderLedger()" style="padding-left:32px">
+            <input type="text" id="led-q" placeholder="Search invoice, party, product..." oninput="renderLedger()" style="padding-left:32px" list="led-customers-list"><datalist id="led-customers-list"></datalist>
           </div>
           <select id="led-type" onchange="renderLedger()" style="width:120px;font-size:12px">
             <option value="">All Types</option>
@@ -1504,6 +1504,92 @@ function setStockFilter(f,btn){
   document.querySelectorAll('#page-stock-balance .pill').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   renderStock();
+}
+
+async function openStockCorrection(code){
+  if(curRole!=='admin'&&curRole!=='manager'){toast('Admin only','error');return;}
+  const p=PRODUCTS.find(x=>x.c===code);
+  if(!p)return;
+  const b=BALANCE[code]||0;
+  
+  document.getElementById('stock-corr-modal')?.remove();
+  const modal=document.createElement('div');
+  modal.id='stock-corr-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  
+  const box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:14px;padding:24px;width:420px;max-width:95vw';
+  
+  const title=document.createElement('div');
+  title.style.cssText='font-weight:800;font-size:16px;color:#BF1B2C;margin-bottom:16px';
+  title.textContent='🔧 Admin Stock Correction';
+  
+  const info=document.createElement('div');
+  info.style.cssText='background:#F9FAFB;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px';
+  info.innerHTML='<div style="font-family:monospace;font-weight:700;color:#BF1B2C">'+code+'</div>'+
+    '<div style="color:#6B7280;margin-top:2px">'+p.d+'</div>'+
+    '<div style="margin-top:8px">Current Balance: <strong style="font-size:18px">'+b+'</strong></div>';
+  
+  const qtyField=document.createElement('div');
+  qtyField.className='field';qtyField.style.marginBottom='12px';
+  qtyField.innerHTML='<label>Corrected Quantity *</label>'+
+    '<input type="number" id="sc-qty" value="'+b+'" min="0" style="width:100%;font-size:16px;font-weight:700">';
+  
+  const reasonField=document.createElement('div');
+  reasonField.className='field';reasonField.style.marginBottom='16px';
+  reasonField.innerHTML='<label>Reason for Correction *</label>'+
+    '<input type="text" id="sc-reason" placeholder="e.g. Physical count, Data entry error..." style="width:100%">';
+  
+  const btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;gap:8px';
+  
+  const applyBtn=document.createElement('button');
+  applyBtn.className='btn btn-primary';applyBtn.style.flex='1';
+  applyBtn.textContent='✅ Apply Correction';
+  applyBtn.onclick=function(){saveStockCorrection(code,b);};
+  
+  const cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-ghost';cancelBtn.style.flex='1';
+  cancelBtn.textContent='Cancel';
+  cancelBtn.onclick=function(){modal.remove();};
+  
+  btnRow.appendChild(applyBtn);btnRow.appendChild(cancelBtn);
+  box.appendChild(title);box.appendChild(info);box.appendChild(qtyField);
+  box.appendChild(reasonField);box.appendChild(btnRow);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  setTimeout(function(){document.getElementById('sc-qty')?.focus();},100);
+}
+
+async function saveStockCorrection(code, oldBal){
+  const newQty=parseInt(document.getElementById('sc-qty')?.value)||0;
+  const reason=document.getElementById('sc-reason')?.value.trim();
+  if(!reason){toast('Enter reason for correction','error');return;}
+  
+  const diff=newQty-oldBal;
+  if(diff===0){toast('No change needed','warn');return;}
+  
+  // Create correction transaction
+  const txn={
+    id:crypto.randomUUID(),
+    date:today(),
+    ref:'CORR-'+Date.now().toString().slice(-6),
+    party:'Admin Correction',
+    type:diff>0?'IN':'OUT',
+    billtype:'correction',
+    remarks:'Stock correction: '+reason+' ('+oldBal+' → '+newQty+')',
+    items:[{code:code,desc:(PRODUCTS.find(p=>p.c===code)?.d||code),qty:Math.abs(diff),rate:0}],
+    user:curName,
+    is_correction:true,
+    ts:new Date().toISOString()
+  };
+  
+  await saveTxn(txn);
+  document.getElementById('stock-corr-modal')?.remove();
+  toast('Stock corrected: '+code+' → '+newQty+' units','success');
+  logActivity('stock_correction',{code,oldBal,newQty,reason,by:curName});
+  renderStock();
+  renderDashboard();
 }
 function renderStock(){
   const q=(document.getElementById('stock-q')?.value||'').toLowerCase();
@@ -2583,6 +2669,12 @@ function renderFollowup(){
 // LEDGER
 // ═══════════════════════════════════════════════════════════════
 function renderLedger(){
+  // Populate customer datalist
+  var dl=document.getElementById('led-customers-list');
+  if(dl&&dl.children.length===0){
+    var custNames=[...new Set(TRANSACTIONS.map(function(t){return t.party;}).filter(Boolean))].sort();
+    dl.innerHTML=custNames.map(function(n){return '<option value="'+n+'">';}).join('');
+  }
   const q=(document.getElementById('led-q')?.value||'').toLowerCase();
   const tf=document.getElementById('led-type')?.value||'';
   const bf=document.getElementById('led-bill')?.value||'';
@@ -2616,47 +2708,140 @@ function renderLedger(){
 
 function openEditTxn(txnId){
   const t=TRANSACTIONS.find(x=>x.id==txnId);
-  if(!t){toast('Not found','error');return;}
-  document.getElementById('edit-txn-body').innerHTML=`
-    <input type="hidden" id="et-id" value="${txnId}">
-    <div class="info-item" style="margin-bottom:12px;border-radius:8px;padding:10px">
-      <div style="font-size:11px;color:var(--grey)">${t.date} · ${t.party||'—'} · Inv: ${t.ref||'—'}</div>
-    </div>
-    <div class="sec-hdr">Edit Quantities</div>
-    ${(t.items||[]).map((it,i)=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F5F5F5">
-        <span class="code-tag" style="flex-shrink:0">${it.code}</span>
-        <span style="flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.desc||''}</span>
-        <input type="number" id="et-qty-${i}" value="${it.qty}" min="1" style="width:80px">
-      </div>`).join('')}
-    <div class="field" style="margin-top:10px"><label>Remarks</label>
-      <input type="text" id="et-rem" value="${t.remarks||''}" placeholder="Optional"></div>
-    <div class="action-row">
-      <button class="btn btn-primary btn-sm" onclick="saveEditTxn('${txnId}')">💾 Save Changes</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeEditTxn()">Cancel</button>
-    </div>`;
-  document.getElementById('edit-txn-modal').style.display='flex';
+  if(!t){toast('Transaction not found','error');return;}
+  
+  var modal=document.getElementById('edit-txn-modal');
+  if(!modal){modal=createEditTxnModal();}
+  
+  var body=document.getElementById('edit-txn-body');
+  body.innerHTML='';
+  
+  // Hidden id
+  var hidId=document.createElement('input');
+  hidId.type='hidden';hidId.id='et-id';hidId.value=txnId;
+  body.appendChild(hidId);
+  
+  // Header info
+  var hdr=document.createElement('div');
+  hdr.style.cssText='background:#F9FAFB;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;color:#6B7280';
+  hdr.innerHTML=t.date+' &nbsp;·&nbsp; <strong>'+(t.party||'—')+'</strong> &nbsp;·&nbsp; Ref: '+(t.ref||'—')+
+    ' &nbsp;·&nbsp; <span style="font-weight:700;color:'+(t.type==='OUT'?'#BF1B2C':'#166534')+'">'+(t.type==='OUT'?'📤 OUT':'📥 IN')+'</span>';
+  body.appendChild(hdr);
+  
+  // Column headers
+  var colHdr=document.createElement('div');
+  colHdr.style.cssText='display:grid;grid-template-columns:2fr 70px 90px 30px;gap:6px;padding:6px 8px;background:#F3F4F6;border-radius:6px;font-size:11px;font-weight:700;color:#6B7280;margin-bottom:4px';
+  colHdr.innerHTML='<div>PRODUCT</div><div>QTY</div><div>PRICE ₹</div><div></div>';
+  body.appendChild(colHdr);
+  
+  // Items container
+  var itemsDiv=document.createElement('div');
+  itemsDiv.id='et-items';
+  (t.items||[]).forEach(function(it,i){
+    var row=document.createElement('div');
+    row.id='et-row-'+i;
+    row.style.cssText='display:grid;grid-template-columns:2fr 70px 90px 30px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #F5F5F5';
+    var nameDiv=document.createElement('div');
+    nameDiv.style.cssText='font-family:monospace;font-size:12px;font-weight:700;color:#BF1B2C;overflow:hidden;text-overflow:ellipsis';
+    nameDiv.title=it.desc||it.code;
+    nameDiv.textContent=it.code;
+    var qtyInp=document.createElement('input');
+    qtyInp.type='number';qtyInp.id='et-qty-'+i;qtyInp.value=it.qty||0;qtyInp.min='0';
+    qtyInp.style.cssText='width:100%;font-size:13px;font-weight:700;text-align:center';
+    var priceInp=document.createElement('input');
+    priceInp.type='number';priceInp.id='et-price-'+i;priceInp.value=it.rate||it.price||0;priceInp.min='0';
+    priceInp.style.cssText='width:100%;font-size:12px';
+    var delBtn=document.createElement('button');
+    delBtn.textContent='×';delBtn.style.cssText='background:none;border:none;color:#BF1B2C;cursor:pointer;font-size:18px';
+    (function(rowEl){delBtn.onclick=function(){rowEl.style.display='none';};})(row);
+    row.appendChild(nameDiv);row.appendChild(qtyInp);row.appendChild(priceInp);row.appendChild(delBtn);
+    itemsDiv.appendChild(row);
+  });
+  body.appendChild(itemsDiv);
+  
+  // Remarks
+  var remDiv=document.createElement('div');
+  remDiv.className='field';remDiv.style.marginTop='12px';
+  remDiv.innerHTML='<label>Remarks</label><input type="text" id="et-rem" value="'+(t.remarks||'')+'" placeholder="Reason for edit...">';
+  body.appendChild(remDiv);
+  
+  // Buttons
+  var btnDiv=document.createElement('div');
+  btnDiv.style.cssText='display:flex;gap:8px;margin-top:14px';
+  var saveBtn=document.createElement('button');
+  saveBtn.className='btn btn-primary';saveBtn.style.flex='1';
+  saveBtn.textContent='Save Changes';
+  (function(id){saveBtn.onclick=function(){saveEditTxn(id);};})(txnId);
+  var cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-ghost';cancelBtn.style.flex='1';
+  cancelBtn.textContent='Cancel';
+  cancelBtn.onclick=closeEditTxn;
+  btnDiv.appendChild(saveBtn);btnDiv.appendChild(cancelBtn);
+  body.appendChild(btnDiv);
+  
+  modal.style.display='flex';
+}
+
+function createEditTxnModal(){
+  var m=document.createElement('div');
+  m.id='edit-txn-modal';
+  m.className='modal-overlay';
+  m.style.display='none';
+  m.onclick=function(e){if(e.target===m)closeEditTxn();};
+  m.innerHTML='<div class="modal" style="max-width:600px"><div class="modal-title">✏️ Edit Transaction<button class="modal-close" onclick="closeEditTxn()">×</button></div><div id="edit-txn-body"></div></div>';
+  document.body.appendChild(m);
+  return m;
 }
 
 async function saveEditTxn(txnId){
   const t=TRANSACTIONS.find(x=>x.id==txnId);
-  if(!t)return;
-  t.items.forEach((it,i)=>{
-    const el=document.getElementById(`et-qty-${i}`);
-    if(el)it.qty=Math.max(1,parseInt(el.value)||1);
+  if(!t){toast('Not found','error');return;}
+  
+  const rows=[...document.querySelectorAll('#et-items > div')].filter(function(r){
+    return r.style.display!=='none';
   });
-  t.remarks=document.getElementById('et-rem')?.value||t.remarks;
-  // Update in Supabase
-  const {data:rows}=await sb.from('transactions').select('id,data');
-  const row=rows?.find(r=>r.data?.id==txnId);
-  if(row){await sb.from('transactions').update({data:t}).eq('id',row.id);}
-  recalcBal(); checkAlerts();
+  const newItems=rows.map(function(r,i){
+    const origItem=t.items[i]||{};
+    const qtyEl=r.querySelector('input[type="number"]:first-of-type');
+    const priceEl=r.querySelector('input[type="number"]:last-of-type');
+    return {
+      code:origItem.code,
+      desc:origItem.desc||origItem.code,
+      qty:parseInt(qtyEl?.value)||0,
+      rate:parseFloat(priceEl?.value)||0
+    };
+  }).filter(function(it){return it.qty>0;});
+  
+  if(!newItems.length){toast('Add at least one item','error');return;}
+  
+  t.items=newItems;
+  t.remarks=document.getElementById('et-rem')?.value||t.remarks||'';
+  t.updated_at=new Date().toISOString();
+  t.updated_by=curName;
+  
+  // Save to Supabase
+  const {data:rows2}=await sb.from('transactions').select('id,data');
+  const row=rows2?.find(function(r){return r.data?.id==txnId;});
+  if(row){
+    await sb.from('transactions').update({data:t}).eq('id',row.id);
+  }
+  
+  recalcBal();
+  checkAlerts();
+  renderLedger();
+  renderStock();
+  renderDashboard();
+  closeEditTxn();
   toast('Transaction updated ✓','success');
-  closeEditTxn(); renderLedger(); renderStock();
 }
-function closeEditTxn(){document.getElementById('edit-txn-modal').style.display='none';}
 
-async function deleteTxn(txnId){
+function closeEditTxn(){
+  var m=document.getElementById('edit-txn-modal');
+  if(m)m.style.display='none';
+}
+
+
+async async function deleteTxn(txnId){
   if(!confirm('Delete this transaction? Stock balance will be updated.'))return;
   const idx=TRANSACTIONS.findIndex(t=>t.id==txnId);
   if(idx===-1)return;
