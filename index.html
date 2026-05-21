@@ -2841,7 +2841,7 @@ function closeEditTxn(){
 }
 
 
-async async function deleteTxn(txnId){
+async function deleteTxn(txnId){
   if(!confirm('Delete this transaction? Stock balance will be updated.'))return;
   const idx=TRANSACTIONS.findIndex(t=>t.id==txnId);
   if(idx===-1)return;
