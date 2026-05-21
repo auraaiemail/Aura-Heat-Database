@@ -2459,15 +2459,19 @@ async function saveEditEnquiry(){
   const err=document.getElementById('enq-err');
   if(!supplier){err.textContent='Enter supplier name.';return;}
 
-  const codels=[...document.querySelectorAll('#enq-items .enq-item-code')];
-  const items=codels.map((el,i)=>{
+  const codeEls=[...document.querySelectorAll('#enq-items .enq-item-code')];
+  const qtyEls=[...document.querySelectorAll('#enq-items .enq-item-qty')];
+  const priceEls=[...document.querySelectorAll('#enq-items .enq-item-price')];
+  console.log('Form rows found:',codeEls.length,'codes,',qtyEls.length,'qtys');
+  const items=codeEls.map((el,i)=>{
     const code=el.value.trim();
-    const row=el.closest('[id^="ei-"]');
-    const qty=parseInt(row?.querySelector('.enq-item-qty')?.value)||0;
-    const price=parseFloat(row?.querySelector('.enq-item-price')?.value)||0;
+    const qty=parseInt(qtyEls[i]?.value)||0;
+    const price=parseFloat(priceEls[i]?.value)||0;
     const prod=PRODUCTS.find(p=>p.c===code);
+    console.log('Row',i,':',code,'qty:',qty,'price:',price);
     return {code,desc:prod?.d||'',qty,buying_price:price};
   }).filter(it=>it.code&&it.qty>0);
+  console.log('Filtered items:',items);
 
   if(!items.length){err.textContent='Add at least one product with qty.';return;}
 
@@ -2682,15 +2686,19 @@ async function saveEnquiry(){
   if(!supplier){err.textContent='Enter supplier name.';return;}
 
   // Collect items
-  const codels=[...document.querySelectorAll('#enq-items .enq-item-code')];
-  const items=codels.map((el,i)=>{
+  const codeEls=[...document.querySelectorAll('#enq-items .enq-item-code')];
+  const qtyEls=[...document.querySelectorAll('#enq-items .enq-item-qty')];
+  const priceEls=[...document.querySelectorAll('#enq-items .enq-item-price')];
+  console.log('Form rows found:',codeEls.length,'codes,',qtyEls.length,'qtys');
+  const items=codeEls.map((el,i)=>{
     const code=el.value.trim();
-    const row=el.closest('[id^="ei-"]');
-    const qty=parseInt(row?.querySelector('.enq-item-qty')?.value)||0;
-    const price=parseFloat(row?.querySelector('.enq-item-price')?.value)||0;
+    const qty=parseInt(qtyEls[i]?.value)||0;
+    const price=parseFloat(priceEls[i]?.value)||0;
     const prod=PRODUCTS.find(p=>p.c===code);
+    console.log('Row',i,':',code,'qty:',qty,'price:',price);
     return {code,desc:prod?.d||'',qty,buying_price:price};
   }).filter(it=>it.code&&it.qty>0);
+  console.log('Filtered items:',items);
 
   if(!items.length){err.textContent='Add at least one product with qty.';return;}
 
