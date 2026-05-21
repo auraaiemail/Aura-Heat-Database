@@ -1696,7 +1696,9 @@ function setCustFilter(f,btn){
 }
 
 
-async function deleteCustomer(id, name){
+async function deleteCustomer(id){
+  const cust=CUSTOMERS_DB.find(c=>c.id===id);
+  const name=cust?.name||'this record';
   if(!confirm('Delete "'+name+'"? This cannot be undone.'))return;
   const {error}=await sb.from('customers').delete().eq('id',id);
   if(!error){
@@ -1764,9 +1766,9 @@ function renderCustCard(c,type='customer'){
     </div>
     ${c.notes?`<div style="font-size:10px;color:var(--grey);margin-top:6px;padding-top:6px;border-top:1px solid #F5F5F5">📝 ${c.notes}</div>`:''}
     <div style="display:flex;gap:5px;margin-top:8px;padding-top:8px;border-top:1px solid #F3F4F6">
-      <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();openCustModal(c.id)" style="flex:1">👁 View</button>
-      <button class="btn btn-xs" style="flex:1;background:#EFF6FF;color:#1d4ed8" onclick="event.stopPropagation();openEditCustModal(c.id)">✏️ Edit</button>
-      <button class="btn btn-xs" style="flex:1;background:#FEE2E2;color:var(--red)" onclick="event.stopPropagation();deleteCustomer(c.id,c.name)">🗑 Delete</button>
+      <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();openCustModal('${c.id}')" style="flex:1">👁 View</button>
+      <button class="btn btn-xs" style="flex:1;background:#EFF6FF;color:#1d4ed8" onclick="event.stopPropagation();openEditCustModal('${c.id}')">✏️ Edit</button>
+      <button class="btn btn-xs" style="flex:1;background:#FEE2E2;color:var(--red)" onclick="event.stopPropagation();deleteCustomer('${c.id}')">🗑 Delete</button>
     </div>
   </div>`;
 }
@@ -1775,7 +1777,7 @@ function renderCustCard(c,type='customer'){
 // CUSTOMER MODAL (Full Detail + Edit)
 // ═══════════════════════════════════════════════════════════════
 function openCustModal(id){
-  const c=CUSTOMERS_DB.find(x=>x.id===id);
+  const c=CUSTOMERS_DB.find(x=>x.id===id||x.id===String(id));
   if(!c){toast('Customer not found','error');return;}
   document.getElementById('cust-modal-title').textContent=c.name;
   document.getElementById('cust-modal').style.display='flex';
