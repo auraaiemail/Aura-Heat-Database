@@ -1608,7 +1608,7 @@ function renderStock(){
     const badge=st==='ok'?'<span class="badge b-ok">✓ OK</span>':st==='low'?`<span class="badge b-low">⚠ Low</span>`:'<span class="badge b-zero">⛔ Out</span>';
     const idleTag=isIdle?`<span class="idle-badge" title="${Math.floor(daysSale/30)}m idle">⏰</span>`:'';
     n++;
-    rows.push(`<tr onclick="openProdModal('${p.c}')" style="cursor:pointer">
+    rows.push(`<tr onclick="openProdModal('${p.c}')" style="cursor:pointer;${isIdle?'background:#FFFBEB;':''}transition:background 0.1s">
       <td style="color:#aaa;font-size:10px">${n}</td>
       <td><span class="code-tag">${p.c}</span>${idleTag}</td>
       <td style="max-width:220px;font-size:11px" title="${p.d}">${p.d}</td>
@@ -1618,7 +1618,7 @@ function renderStock(){
       <td style="text-align:right;color:var(--red);font-weight:700;font-size:11px">${tO}</td>
       <td style="text-align:right;font-size:15px;font-weight:800;color:${b<=0?'var(--red)':b<MIN_QTY?'var(--orange)':'var(--green)'}">${b}</td>
       <td style="font-size:10px;color:#888;white-space:nowrap">${lastSale||'Never'}</td>
-      <td>${badge}</td>
+      <td style="white-space:nowrap">${badge}${(curRole==='admin'||curRole==='manager')?'<button onclick="event.stopPropagation();openStockCorrection(\''+p.c+'\')" style="background:none;border:1px solid #9CA3AF;border-radius:3px;padding:1px 5px;font-size:10px;cursor:pointer;color:#6B7280;margin-left:4px" title="Correct stock">⚙</button>':''}</td>
     </tr>`);
   });
   document.getElementById('stock-body').innerHTML=rows.length?rows.join(''):'<tr><td colspan="10" class="empty">No items found</td></tr>';
