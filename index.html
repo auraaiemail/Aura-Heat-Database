@@ -2623,6 +2623,129 @@ function setFollowFilter(f,btn){
   else{const m={all:'ff-all',PAYMENT_DUE:'ff-pd',HIGH:'ff-hi',FOLLOW_NOW:'ff-fn',ACTIVE:'ff-ac',DORMANT:'ff-dm',TWO_MONTHS:'ff-2m',FOUR_MONTHS:'ff-4m',SIX_MONTHS:'ff-6m',ONE_YEAR:'ff-1y',TODAY:'ff-td'};const el=document.getElementById(m[f]);if(el)el.classList.add('active');}
   renderFollowup();
 }
+
+function openCallLog(custId){
+  var c=CUSTOMERS_DB.find(function(x){return x.id===custId;});
+  if(!c)return;
+  document.getElementById('call-log-modal')?.remove();
+  
+  var modal=document.createElement('div');
+  modal.id='call-log-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.onclick=function(e){if(e.target===modal)modal.remove();};
+  
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:14px;padding:24px;width:440px;max-width:95vw;max-height:90vh;overflow-y:auto';
+  
+  var t=today();
+  
+  // Title
+  var title=document.createElement('div');
+  title.style.cssText='font-weight:800;font-size:16px;color:#166534;margin-bottom:4px';
+  title.textContent='📞 Log Call — '+c.name;
+  box.appendChild(title);
+  
+  var sub=document.createElement('div');
+  sub.style.cssText='font-size:12px;color:#6B7280;margin-bottom:16px';
+  sub.textContent=t;
+  box.appendChild(sub);
+  
+  // Notes
+  var nf=document.createElement('div');nf.className='field';nf.style.marginBottom='12px';
+  nf.innerHTML='<label>Call Notes</label>';
+  var ta=document.createElement('textarea');
+  ta.id='cl-notes';ta.rows=3;ta.placeholder='What was discussed? Interest level, requirements...';
+  ta.style.cssText='width:100%;font-size:13px';
+  nf.appendChild(ta);box.appendChild(nf);
+  
+  // Outcome
+  var of=document.createElement('div');of.className='field';of.style.marginBottom='12px';
+  of.innerHTML='<label>Outcome</label>';
+  var sel=document.createElement('select');sel.id='cl-outcome';sel.style.width='100%';
+  [['called','✅ Successfully called'],['no_answer','📵 No answer'],
+   ['callback','🔄 Will call back'],['not_interested','❌ Not interested'],
+   ['order_placed','🛒 Order placed'],['meeting_fixed','📅 Meeting fixed']
+  ].forEach(function(o){
+    var opt=document.createElement('option');opt.value=o[0];opt.textContent=o[1];
+    sel.appendChild(opt);
+  });
+  of.appendChild(sel);box.appendChild(of);
+  
+  // Next followup
+  var nxf=document.createElement('div');nxf.className='field';nxf.style.marginBottom='16px';
+  nxf.innerHTML='<label>Next Follow-up</label>';
+  
+  var quickBtns=document.createElement('div');
+  quickBtns.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px';
+  
+  var dateInp=document.createElement('input');
+  dateInp.type='date';dateInp.id='cl-next';dateInp.style.width='100%';
+  
+  [[1,'Tomorrow'],[3,'3 days'],[7,'1 week'],[14,'2 weeks'],[30,'1 month'],[90,'3 months']
+  ].forEach(function(o){
+    var btn=document.createElement('button');
+    btn.className='btn btn-xs btn-ghost';
+    btn.textContent=o[1];
+    (function(days){btn.onclick=function(){
+      var d=new Date();d.setDate(d.getDate()+days);
+      dateInp.value=d.toISOString().split('T')[0];
+    };})(o[0]);
+    quickBtns.appendChild(btn);
+  });
+  nxf.appendChild(quickBtns);nxf.appendChild(dateInp);box.appendChild(nxf);
+  
+  // Buttons
+  var btnRow=document.createElement('div');btnRow.style.cssText='display:flex;gap:8px';
+  var saveBtn=document.createElement('button');
+  saveBtn.className='btn btn-primary';saveBtn.style.flex='1';
+  saveBtn.textContent='💾 Save Call Log';
+  (function(id){saveBtn.onclick=function(){saveCallLog(id);};})(custId);
+  var cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-ghost';cancelBtn.style.flex='1';
+  cancelBtn.textContent='Cancel';
+  cancelBtn.onclick=function(){modal.remove();};
+  btnRow.appendChild(saveBtn);btnRow.appendChild(cancelBtn);
+  box.appendChild(btnRow);
+  
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  setTimeout(function(){ta.focus();},100);
+}
+
+async function saveCallLog(custId){
+  var c=CUSTOMERS_DB.find(function(x){return x.id===custId;});
+  if(!c)return;
+  
+  var notes=document.getElementById('cl-notes')?.value||'';
+  var outcome=document.getElementById('cl-outcome')?.value||'called';
+  var nextFollowup=document.getElementById('cl-next')?.value||'';
+  var t=today();
+  
+  // Update customer locally
+  if(!c.follow_history)c.follow_history=[];
+  c.follow_history.push({
+    date:t,by:curName,type:'call',outcome:outcome,note:notes
+  });
+  c.last_call_date=t;
+  if(nextFollowup)c.next_followup=nextFollowup;
+  c.updated_at=new Date().toISOString();
+  
+  // Update priority based on outcome
+  if(outcome==='order_placed')c.priority='ACTIVE';
+  else if(outcome==='not_interested')c.priority='DORMANT';
+  else if(outcome==='no_answer')c.priority=c.priority||'WARM';
+  
+  // Save to Supabase
+  await saveCustomer(c);
+  
+  document.getElementById('call-log-modal')?.remove();
+  toast('Call logged for '+c.name,'success');
+  logActivity('followup_call',{customer:c.name,outcome:outcome,next:nextFollowup});
+  
+  renderFollowup();
+  renderCustomers();
+  renderDashboard();
+}
 function renderFollowup(){
   const q=(document.getElementById('follow-q')?.value||'').toLowerCase();
   const staffF=document.getElementById('follow-staff')?.value||'';
@@ -2659,6 +2782,7 @@ function renderFollowup(){
       ${c.next_followup?`<div style="font-size:10px;color:${c.next_followup<=t?'var(--red)':'var(--blue)'};margin-top:3px;font-weight:600">📅 Next: ${c.next_followup}${c.next_followup===t?' — TODAY!':''}</div>`:''}
       <div class="cust-actions">
         ${c.primary_phone?`<button class="btn btn-xs btn-wa" onclick="event.stopPropagation();window.open('https://wa.me/91${c.primary_phone}','_blank')">📱 WA</button>`:''}
+        <button class="btn btn-xs" style="background:#DCFCE7;color:#166534" onclick="event.stopPropagation();openCallLog('${c.id}')">📞 Call Done</button>
         ${(c.outstanding||0)>0?`<button class="btn btn-xs btn-green" onclick="event.stopPropagation();openPaymentModal('${c.id}')">💰 Payment</button>`:''}
         <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();openCustModal('${c.id}')">✏️ Note</button>
       </div>
