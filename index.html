@@ -2601,11 +2601,36 @@ async function savePayment(){
   if(!amount||amount<=0){if(err)err.textContent='Enter valid amount.';return;}
   var c=CUSTOMERS_DB.find(function(x){return x.id===id;});
   if(!c){if(err)err.textContent='Customer not found.';return;}
+  
+  // Update locally first
   c.outstanding=Math.max(0,(c.outstanding||0)-amount);
   c.payment_received=(c.payment_received||0)+amount;
   if(c.outstanding===0&&c.priority==='PAYMENT_DUE')c.priority='ACTIVE';
-  sb.from('payment_receipts').insert({date:date,customer_name:c.name,amount:amount,payment_mode:mode,reference_no:ref,notes:remarks,created_by_name:curName,created_at:new Date().toISOString()}).catch(function(e){console.warn(e);});
-  sb.from('customers').update({outstanding:c.outstanding,updated_at:new Date().toISOString()}).eq('id',id).catch(function(){});
+  c.updated_at=new Date().toISOString();
+  
+  // Save payment receipt
+  try{
+    await sb.from('payment_receipts').insert({
+      date:date,customer_name:c.name,amount:amount,payment_mode:mode,
+      reference_no:ref,notes:remarks,created_by_name:curName,
+      created_at:new Date().toISOString()
+    });
+  }catch(e){console.warn('receipt:',e);}
+  
+  // Update customer outstanding
+  try{
+    var r=await sb.from('customers').update({
+      outstanding:c.outstanding,updated_at:c.updated_at
+    }).eq('id',id);
+    // If no rows updated, customer is from embedded data - save to customers_data
+    if(!r.data||!r.data.length){
+      var r2=await sb.from('customers_data').select('id').limit(1);
+      if(r2.data&&r2.data.length){
+        await sb.from('customers_data').update({data:CUSTOMERS_DB}).eq('id',r2.data[0].id);
+      }
+    }
+  }catch(e){console.warn('customer update:',e);}
+  
   toast('₹'+amount.toLocaleString('en-IN')+' payment recorded for '+c.name,'success');
   logActivity('payment_received',{customer:c.name,amount:amount,mode:mode});
   closePaymentModal();
