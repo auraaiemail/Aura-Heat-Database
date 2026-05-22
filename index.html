@@ -609,6 +609,7 @@ tr:hover td{background:#FFFAF9}
           </div>
           <select id="led-type" onchange="renderLedger()" style="width:120px;font-size:12px">
             <option value="">All Types</option>
+            <option value="payment">💰 Payments</option>
             <option value="IN">Stock IN</option>
             <option value="OUT">Stock OUT</option>
           </select>
@@ -1018,7 +1019,7 @@ async function initApp(){
   checkAlerts();
   renderDashboard();
   renderPicker();
-  await Promise.all([loadTxns(), loadCustomersDB(), loadUsers()]);
+  await Promise.all([loadTxns(), loadCustomersDB(), loadUsers(), loadPayments()]);
   subscribeRT();
   setSS('Live','ok');
 }
@@ -1029,6 +1030,22 @@ async function loadTxns(){
     TRANSACTIONS = (data||[]).map(r=>r.data).filter(Boolean);
     recalcBal(); checkAlerts(); renderDashboard();
   }catch(e){console.error('loadTxns',e);}
+}
+
+let PAYMENTS=[];
+async function loadPayments(){
+  try{
+    const {data}=await sb.from('payment_receipts').select('*').order('created_at',{ascending:false});
+    PAYMENTS=data||[];
+  }catch(e){console.error('loadPayments',e);}
+}
+
+async function deletePayment(id){
+  if(!confirm('Delete this payment record?'))return;
+  await sb.from('payment_receipts').delete().eq('id',id);
+  PAYMENTS=PAYMENTS.filter(function(p){return p.id!==id;});
+  toast('Payment deleted','success');
+  renderLedger();
 }
 
 async function loadCustomersDB(){
@@ -2818,41 +2835,102 @@ function renderFollowup(){
 // LEDGER
 // ═══════════════════════════════════════════════════════════════
 function renderLedger(){
-  // Populate customer datalist
   var dl=document.getElementById('led-customers-list');
   if(dl&&dl.children.length===0){
-    var custNames=[...new Set(TRANSACTIONS.map(function(t){return t.party;}).filter(Boolean))].sort();
+    var custNames=[...new Set([
+      ...TRANSACTIONS.map(function(t){return t.party;}),
+      ...PAYMENTS.map(function(p){return p.customer_name;})
+    ].filter(Boolean))].sort();
     dl.innerHTML=custNames.map(function(n){return '<option value="'+n+'">';}).join('');
   }
-  const q=(document.getElementById('led-q')?.value||'').toLowerCase();
-  const tf=document.getElementById('led-type')?.value||'';
-  const bf=document.getElementById('led-bill')?.value||'';
-  const bL={with_gst:'📋 GST',without_gst:'📄 No GST',estimate:'📝 Est',delivery:'🚚 DC'};
-  let rows=[];
-  TRANSACTIONS.forEach(t=>{
-    if(tf&&t.type!==tf)return;
-    if(bf&&t.billtype!==bf)return;
-    (t.items||[]).forEach(it=>{
-      if(q&&!it.code.toLowerCase().includes(q)&&!(t.party||'').toLowerCase().includes(q)&&!(t.ref||'').toLowerCase().includes(q))return;
-      rows.push(`<tr>
-        <td style="white-space:nowrap">${t.date}</td>
-        <td style="font-weight:700;white-space:nowrap">${t.ref||'—'}</td>
-        <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.party||'—'}</td>
-        <td style="font-size:10px;color:#888">${t.user||'—'}</td>
-        <td><span class="badge ${t.type==='IN'?'b-in':'b-out'}">${t.type}</span></td>
-        <td style="font-size:10px;color:#666;white-space:nowrap">${bL[t.billtype||'with_gst']||'📋 GST'}</td>
-        <td><span class="code-tag">${it.code}</span></td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${it.desc||''}">${it.desc||''}</td>
-        <td style="text-align:right;font-weight:700;color:${t.type==='IN'?'var(--green)':'var(--red)'}">${t.type==='IN'?'+':'−'}${it.qty}</td>
-        <td style="font-size:10px;color:#888">${t.remarks||'—'}</td>
-        <td style="white-space:nowrap">
-          <button onclick="openEditTxn('${t.id}')" style="background:var(--blue2);color:var(--blue);border:none;border-radius:4px;padding:3px 7px;font-size:9px;cursor:pointer;font-weight:700;margin-right:3px">✏️</button>
-          <button onclick="deleteTxn('${t.id}')" style="background:var(--red2);color:var(--red);border:none;border-radius:4px;padding:3px 7px;font-size:9px;cursor:pointer;font-weight:700">🗑</button>
-        </td>
-      </tr>`);
-    });
+
+  var q=(document.getElementById('led-q')?.value||'').toLowerCase();
+  var typeFilter=document.getElementById('led-type')?.value||'all';
+  var dateFrom=document.getElementById('led-from')?.value||'';
+  var dateTo=document.getElementById('led-to')?.value||'';
+
+  var allItems=[];
+
+  TRANSACTIONS.forEach(function(t){
+    if(typeFilter==='payment') return;
+    if(typeFilter==='IN'&&t.type!=='IN') return;
+    if(typeFilter==='OUT'&&t.type!=='OUT') return;
+    if(q&&!(t.party||'').toLowerCase().includes(q)&&
+       !(t.ref||'').toLowerCase().includes(q)&&
+       !(t.items||[]).some(function(i){return (i.code||'').toLowerCase().includes(q);})) return;
+    if(dateFrom&&t.date<dateFrom) return;
+    if(dateTo&&t.date>dateTo) return;
+    allItems.push({type:'txn',date:t.date,ts:t.ts||t.date,data:t});
   });
-  document.getElementById('led-body').innerHTML=rows.length?rows.join(''):'<tr><td colspan="11" class="empty">No transactions yet</td></tr>';
+
+  if(typeFilter==='all'||typeFilter==='payment'){
+    PAYMENTS.forEach(function(p){
+      if(q&&!(p.customer_name||'').toLowerCase().includes(q)&&
+         !(p.reference_no||'').toLowerCase().includes(q)) return;
+      var d=p.date||( p.created_at||'').split('T')[0]||'';
+      if(dateFrom&&d<dateFrom) return;
+      if(dateTo&&d>dateTo) return;
+      allItems.push({type:'payment',date:d,ts:p.created_at||d,data:p});
+    });
+  }
+
+  allItems.sort(function(a,b){return (b.ts||b.date)>(a.ts||a.date)?1:-1;});
+
+  var el=document.getElementById('led-body');
+  if(!el)return;
+  el.innerHTML='';
+
+  if(!allItems.length){
+    el.innerHTML='<tr><td colspan="7" class="empty">No records found</td></tr>';
+    return;
+  }
+
+  allItems.forEach(function(item){
+    var tr=document.createElement('tr');
+    if(item.type==='payment'){
+      var p=item.data;
+      tr.style.background='#F0FDF4';
+      tr.innerHTML=
+        '<td style="font-size:11px">'+p.date+'</td>'+
+        '<td><span style="background:#DCFCE7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">💰 PAYMENT</span></td>'+
+        '<td style="font-weight:600">'+(p.customer_name||'—')+'</td>'+
+        '<td style="color:#166534;font-weight:700;font-size:14px">₹'+(p.amount||0).toLocaleString('en-IN')+'</td>'+
+        '<td style="font-size:11px;color:#6B7280">'+(p.payment_mode||'—')+(p.reference_no?' · '+p.reference_no:'')+'</td>'+
+        '<td style="font-size:11px;color:#6B7280">'+(p.notes||'—')+'</td>'+
+        '<td></td>';
+      var delBtn=document.createElement('button');
+      delBtn.style.cssText='background:#FEE2E2;color:#BF1B2C;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px';
+      delBtn.textContent='🗑 Delete';
+      (function(pid){delBtn.onclick=function(){deletePayment(pid);};})(p.id);
+      tr.lastChild.appendChild(delBtn);
+    } else {
+      var t=item.data;
+      var isOut=t.type==='OUT';
+      var tot=(t.items||[]).reduce(function(s,i){return s+(i.qty||0)*(i.rate||0);},0);
+      tr.innerHTML=
+        '<td style="font-size:11px">'+t.date+'</td>'+
+        '<td><span style="background:'+(isOut?'#FEE2E2':'#DCFCE7')+';color:'+(isOut?'#BF1B2C':'#166534')+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(isOut?'📤 OUT':'📥 IN')+'</span></td>'+
+        '<td style="font-weight:600">'+(t.party||'—')+'</td>'+
+        '<td style="font-weight:700">'+(tot>0?'₹'+tot.toLocaleString('en-IN'):'—')+'</td>'+
+        '<td style="font-size:11px">'+(t.ref||'—')+'</td>'+
+        '<td style="font-size:11px;color:#6B7280">'+(t.items||[]).map(function(i){return i.code+' ×'+i.qty;}).join(', ')+'</td>'+
+        '<td style="display:flex;gap:4px"></td>';
+      var tdLast=tr.lastChild;
+      if(curRole==='admin'||curRole==='manager'){
+        var editBtn=document.createElement('button');
+        editBtn.style.cssText='background:#EFF6FF;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px';
+        editBtn.textContent='✏️';
+        (function(tid){editBtn.onclick=function(){openEditTxn(tid);};})(t.id);
+        tdLast.appendChild(editBtn);
+      }
+      var delBtn=document.createElement('button');
+      delBtn.style.cssText='background:#FEE2E2;color:#BF1B2C;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px';
+      delBtn.textContent='🗑';
+      (function(tid){delBtn.onclick=function(){deleteTxn(tid);};})(t.id);
+      tdLast.appendChild(delBtn);
+    }
+    el.appendChild(tr);
+  });
 }
 
 function openEditTxn(txnId){
