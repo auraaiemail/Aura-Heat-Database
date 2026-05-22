@@ -1075,18 +1075,26 @@ async function deletePayment(id){
 async function loadCustomersDB(){
   try{
     // Load from customers_data first (has all 943 with latest outstanding)
-    const {data} = await sb.from('customers_data').select('data').limit(1);
+    const {data,error} = await sb.from('customers_data').select('data').limit(1);
+    console.log('customers_data rows:', data?.length, 'error:', error?.message);
     if(data&&data.length>0&&Array.isArray(data[0].data)&&data[0].data.length>0){
       CUSTOMERS_DB = data[0].data;
+      console.log('Loaded',CUSTOMERS_DB.length,'customers from customers_data');
       updateFollowupBadges();
       renderDashboard();
       return;
     }
-    // Fall back to embedded customers
+    // No data in customers_data - initialize it with embedded customers
+    console.log('customers_data empty - initializing with embedded data');
     CUSTOMERS_DB = CUSTOMERS.map(c => migrateOldCustomer(c));
+    // Save to customers_data so future updates persist
+    sb.from('customers_data').insert({data:CUSTOMERS_DB}).then(function(r){
+      console.log('customers_data initialized:', r.error?r.error.message:'OK');
+    });
     updateFollowupBadges();
     renderDashboard();
   }catch(e){
+    console.error('loadCustomersDB error:',e);
     CUSTOMERS_DB = CUSTOMERS.map(c => migrateOldCustomer(c));
   }
 }
