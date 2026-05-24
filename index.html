@@ -1917,72 +1917,140 @@ function importOutstandingExcel(input){
 function importSalesExcel(input){
   var file=input.files[0];
   if(!file)return;
-  toast('Reading sales Excel...','');
+  toast('Reading Sales Excel...','');
   readExcel(file,function(rows){
-    if(rows.length<2){toast('No data found','error');return;}
+    if(rows.length<2){toast('No data in file','error');return;}
     
-    // Find headers
-    var headerRow=0;
-    var dateCol=-1,partyCol=-1,codeCol=-1,qtyCol=-1,rateCol=-1,refCol=-1;
-    for(var r=0;r<Math.min(5,rows.length);r++){
-      for(var c=0;c<rows[r].length;c++){
-        var cell=(rows[r][c]||'').toString().toLowerCase().trim();
-        if(cell.includes('date'))dateCol=c;
-        if(cell.includes('party')||cell.includes('customer'))partyCol=c;
-        if(cell.includes('item code')||cell.includes('product code')||cell==='code')codeCol=c;
-        if(cell==='qty'||cell.includes('quantity'))qtyCol=c;
-        if(cell.includes('rate')||cell.includes('price'))rateCol=c;
-        if(cell.includes('invoice')||cell.includes('bill')||cell.includes('ref'))refCol=c;
-      }
-      if(dateCol>=0&&partyCol>=0&&codeCol>=0&&qtyCol>=0){headerRow=r;break;}
-    }
+    // Try to detect which sheet we have by looking at headers
+    // Vyappar Sheet 2 (Item Details) has: Date, Invoice No./Txn No., Party Name, Item Name, Item Code, Quantity
+    // Vyappar Sheet 1 (Sales Report) has: Date, Invoice No, Party Name, Total Amount
+    var header=rows[0].map(function(h){return (h||'').toString().toLowerCase().trim();});
+    console.log('Headers detected:',header);
     
-    if(codeCol<0||qtyCol<0){
-      toast('Cannot find required columns','error');
-      console.log('Headers:',rows[headerRow||0]);
+    // Detect column positions
+    var dateCol=-1,invoiceCol=-1,partyCol=-1,itemNameCol=-1,
+        itemCodeCol=-1,qtyCol=-1,rateCol=-1,txnTypeCol=-1;
+    
+    header.forEach(function(h,i){
+      if(h==='date') dateCol=i;
+      if(h.includes('invoice')||h==='txn no'||h.includes('invoice no')) invoiceCol=i;
+      if(h==='party name'||h==='party') partyCol=i;
+      if(h==='item name'||h==='item') itemNameCol=i;
+      if(h==='item code'||h==='code') itemCodeCol=i;
+      if(h==='quantity'||h==='qty') qtyCol=i;
+      if(h==='unitprice'||h==='unit price'||h==='rate'||h==='price') rateCol=i;
+      if(h==='transaction type'||h==='type') txnTypeCol=i;
+    });
+    
+    console.log('Cols: date='+dateCol+' invoice='+invoiceCol+' party='+partyCol+
+      ' itemName='+itemNameCol+' itemCode='+itemCodeCol+' qty='+qtyCol);
+    
+    // Check if this is the Item Details sheet
+    if(itemNameCol<0&&itemCodeCol<0){
+      toast('Please upload the "Item Details" sheet (Sheet 2), not the Sales Report sheet','error');
       return;
     }
+    if(qtyCol<0){toast('Quantity column not found','error');return;}
+    if(partyCol<0){toast('Party Name column not found','error');return;}
     
-    // Group by invoice/date+party
+    // Group rows by invoice
     var txnMap={};
-    for(var i=headerRow+1;i<rows.length;i++){
+    var skipped=0;
+    
+    for(var i=1;i<rows.length;i++){
       var row=rows[i];
-      var code=(row[codeCol]||'').toString().trim();
-      var qty=parseFloat(row[qtyCol])||0;
-      if(!code||!qty)continue;
+      if(!row||!row[partyCol])continue;
       
       var date=(row[dateCol]||'').toString().trim();
+      var invoice=(row[invoiceCol]||'').toString().trim();
       var party=(row[partyCol]||'').toString().trim();
-      var rate=parseFloat(row[rateCol])||0;
-      var ref=(row[refCol]||'').toString().trim()||'IMP-'+date;
-      var key=ref||( date+'_'+party);
+      var itemName=itemNameCol>=0?(row[itemNameCol]||'').toString().trim():'';
+      var itemCode=itemCodeCol>=0?(row[itemCodeCol]||'').toString().trim():'';
+      var qty=parseFloat(row[qtyCol])||0;
+      var rate=rateCol>=0?(parseFloat(row[rateCol])||0):0;
+      var txnType=txnTypeCol>=0?(row[txnTypeCol]||'').toString().toLowerCase():'sale';
       
+      // Skip purchase/return transactions
+      if(txnType.includes('purchase')||txnType.includes('return')){skipped++;continue;}
+      if(!party||(!itemName&&!itemCode))continue;
+      if(qty<=0)continue;
+      
+      // Skip non-product items (freight, packing, services)
+      var itemLower=(itemName||'').toLowerCase();
+      var skipWords=['freight','packing','forwarding','courier','transport','clearing',
+        'customs','insurance','service charge','service tax','loading','unloading',
+        'handling','miscellaneous','sundry','bank charge','commission','discount',
+        'round off','rounding','other charge','delivery charge','installation',
+        'repair','rework','labour','labor','octroi','toll','duty','cess',
+        'packaging','box','carton','wrap','tape'];
+      var isSkip=skipWords.some(function(w){return itemLower.includes(w);});
+      if(isSkip){skipped++;continue;}
+      
+      // Format date properly (Vyappar uses DD-MM-YYYY or DD/MM/YYYY)
+      var formattedDate=date;
+      var dateParts=date.split(/[-\/]/);
+      if(dateParts.length===3&&dateParts[0].length<=2){
+        // DD-MM-YYYY → YYYY-MM-DD
+        formattedDate=dateParts[2]+'-'+dateParts[1].padStart(2,'0')+'-'+dateParts[0].padStart(2,'0');
+      }
+      
+      var key=invoice||(formattedDate+'_'+party);
       if(!txnMap[key]){
         txnMap[key]={
           id:crypto.randomUUID(),
-          date:date,party:party,ref:ref||('IMP-'+i),
-          type:'OUT',billtype:'with_gst',
+          date:formattedDate,
+          ref:invoice||('VYP-'+i),
+          party:party,
+          type:'OUT',
+          billtype:'with_gst',
           remarks:'Imported from Vyappar',
-          items:[],user:curName,ts:new Date().toISOString()
+          items:[],
+          user:'Vyappar Import',
+          ts:new Date().toISOString()
         };
       }
-      var prod=PRODUCTS.find(function(p){return p.c===code;});
-      txnMap[key].items.push({code:code,desc:prod?prod.d:code,qty:qty,rate:rate});
+      
+      // Find product in PRODUCTS for description
+      var code=itemCode||itemName.substring(0,30);
+      var prod=PRODUCTS.find(function(p){
+        return p.c===code||
+               p.c===itemCode||
+               p.c.toLowerCase()===code.toLowerCase()||
+               p.d.toLowerCase()===itemName.toLowerCase()||
+               (itemCode&&p.c.replace(/^(NHA|HSA|AI)/i,'')===itemCode.replace(/^(NHA|HSA|AI)/i,''));
+      });
+      
+      txnMap[key].items.push({
+        code:prod?prod.c:(itemCode||itemName.substring(0,30)),
+        desc:prod?prod.d:itemName,
+        qty:qty,
+        rate:rate
+      });
     }
     
-    var txns=Object.values(txnMap);
-    if(!txns.length){toast('No transactions found','error');return;}
+    var txns=Object.values(txnMap).filter(function(t){return t.items.length>0;});
+    if(!txns.length){
+      toast('No sales transactions found. Check you are uploading Sheet 2 (Item Details)','error');
+      return;
+    }
     
-    // Save all transactions
+    toast('Saving '+txns.length+' transactions...','');
     var saved=0;
-    var saveNext=function(idx){
+    function saveNext(idx){
       if(idx>=txns.length){
-        recalcBal();checkAlerts();renderStock();renderDashboard();
-        toast('Imported '+saved+' transactions ('+txns.reduce(function(s,t){return s+t.items.length;},0)+' line items)','success');
+        recalcBal();checkAlerts();renderStock();renderDashboard();renderLedger();
+        toast('Imported '+saved+' transactions, '+skipped+' skipped','success');
         return;
       }
-      saveTxn(txns[idx]).then(function(){saved++;saveNext(idx+1);});
-    };
+      // Check if already imported (avoid duplicates)
+      var exists=TRANSACTIONS.find(function(t){return t.ref===txns[idx].ref&&t.party===txns[idx].party;});
+      if(exists){saved++;saveNext(idx+1);return;}
+      
+      TRANSACTIONS.unshift(txns[idx]);
+      sb.from('transactions').insert({data:txns[idx]}).then(function(){
+        saved++;saveNext(idx+1);
+      });
+    }
     saveNext(0);
     input.value='';
   });
