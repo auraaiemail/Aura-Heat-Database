@@ -543,13 +543,6 @@ tr:hover td{background:#FFFAF9}
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>
             <input type="text" id="cust-q" placeholder="Search customer name, city, GST..." oninput="renderCustomers()" style="padding-left:32px">
           </div>
-          <select id="cust-state-filter" onchange="renderCustomers();updateCityFilter()" style="min-width:130px">
-            <option value="">All States</option>
-          </select>
-          <select id="cust-city-filter" onchange="renderCustomers()" style="min-width:130px">
-            <option value="">All Cities</option>
-          </select>
-          <button class="btn btn-xs" style="background:#EFF6FF;color:#1d4ed8;white-space:nowrap" onclick="showCustomersOnMap()">🗺 Map View</button>
           <select id="cust-filter-type" onchange="renderCustomers()" style="width:130px">
             <option value="">All Bill Types</option>
             <option value="with_gst">With GST</option>
@@ -568,7 +561,18 @@ tr:hover td{background:#FFFAF9}
           </div>
           <button class="btn btn-primary btn-sm" onclick="openNewCustModal('customer')">+ Add Customer</button>
         </div>
-        <div id="cust-list"><div class="loading">Loading...</div></div>
+        <div style="background:#F9FAFB;border-radius:10px;padding:12px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+            <span style="font-size:12px;font-weight:700;color:#6B7280">🔍 Filter by Location:</span>
+            <select id="cust-state-filter" onchange="updateCityFilter();renderCustomers()" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #D1D5DB">
+              <option value="">All States</option>
+            </select>
+            <select id="cust-city-filter" onchange="renderCustomers()" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #D1D5DB">
+              <option value="">All Cities</option>
+            </select>
+            <button class="btn btn-xs" style="background:#EFF6FF;color:#1d4ed8" onclick="showCustomersOnMap()">🗺 Route Map</button>
+            <button class="btn btn-xs btn-ghost" onclick="document.getElementById('cust-state-filter').value='';document.getElementById('cust-city-filter').value='';renderCustomers()">✕ Clear</button>
+          </div>
+          <div id="cust-list"><div class="loading">Loading...</div></div>
       </div>
 
       <!-- ═══ SUPPLIERS ═══ -->
@@ -2564,30 +2568,20 @@ function showCustomersOnMap(){
 }
 
 function populateCustFilters(){
-  var states=new Set();
-  var cities=new Set();
-  CUSTOMERS_DB.forEach(function(c){
-    if(c.primary_state)states.add(c.primary_state);
-    if(c.primary_city)cities.add(c.primary_city);
-    // Also check companies array
-    (c.companies||[]).forEach(function(co){
-      if(co.state)states.add(co.state);
-      if(co.city)cities.add(co.city);
-    });
-  });
   var stateEl=document.getElementById('cust-state-filter');
-  if(stateEl&&stateEl.options.length<=1){
+  if(!stateEl)return;
+  // Always repopulate if only default option
+  if(stateEl.options.length<=1){
+    var states=new Set();
+    CUSTOMERS_DB.forEach(function(c){
+      if(c.primary_state&&c.primary_state.trim())states.add(c.primary_state.trim());
+      (c.companies||[]).forEach(function(co){if(co.state&&co.state.trim())states.add(co.state.trim());});
+    });
     [...states].sort().forEach(function(s){
       var opt=document.createElement('option');opt.value=s;opt.textContent=s;
       stateEl.appendChild(opt);
     });
-  }
-  var cityEl=document.getElementById('cust-city-filter');
-  if(cityEl&&cityEl.options.length<=1){
-    [...cities].sort().forEach(function(c){
-      var opt=document.createElement('option');opt.value=c;opt.textContent=c;
-      cityEl.appendChild(opt);
-    });
+    console.log('Populated states:',states.size);
   }
 }
 
@@ -2598,16 +2592,22 @@ function updateCityFilter(){
   cityEl.innerHTML='<option value="">All Cities</option>';
   var cities=new Set();
   CUSTOMERS_DB.forEach(function(c){
-    var custState=c.primary_state||(c.companies&&c.companies[0]&&c.companies[0].state)||'';
-    if(!state||custState===state){
-      if(c.primary_city)cities.add(c.primary_city);
-      (c.companies||[]).forEach(function(co){if(co.city)cities.add(co.city);});
+    var cState=(c.primary_state||'').trim();
+    var cCity=(c.primary_city||'').trim();
+    var coState=((c.companies&&c.companies[0]&&c.companies[0].state)||'').trim();
+    var coCity=((c.companies&&c.companies[0]&&c.companies[0].city)||'').trim();
+    var matchState=!state||(cState===state||coState===state);
+    if(matchState){
+      if(cCity)cities.add(cCity);
+      if(coCity)cities.add(coCity);
+      (c.companies||[]).forEach(function(co){if((co.city||'').trim())cities.add(co.city.trim());});
     }
   });
   [...cities].sort().forEach(function(city){
     var opt=document.createElement('option');opt.value=city;opt.textContent=city;
     cityEl.appendChild(opt);
   });
+  console.log('Cities for state "'+state+'":',cities.size);
 }
 function renderCustomers(){
   populateCustFilters();
