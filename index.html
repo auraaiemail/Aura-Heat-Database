@@ -1737,67 +1737,119 @@ function downloadProductTemplate(){
 function importStockExcel(input){
   var file=input.files[0];
   if(!file)return;
-  toast('Reading stock Excel...','');
+  toast('Reading Excel...','');
   readExcel(file,function(rows){
-    if(rows.length<2){toast('No data found in Excel','error');return;}
+    if(rows.length<2){toast('No data found','error');return;}
     
-    // Find header row - look for item code column
+    // Find header row
     var headerRow=0;
-    var codeCol=-1,qtyCol=-1,nameCol=-1;
+    var nameCol=-1,qtyCol=-1,codeCol=-1,famCol=-1;
     for(var r=0;r<Math.min(5,rows.length);r++){
       for(var c=0;c<rows[r].length;c++){
         var cell=(rows[r][c]||'').toString().toLowerCase().trim();
-        if(cell.includes('item code')||cell.includes('product code')||cell==='code'||cell==='sku')codeCol=c;
-        if(cell.includes('closing')||cell.includes('current')||cell.includes('stock')||cell==='qty'||cell==='quantity')qtyCol=c;
-        if(cell.includes('item name')||cell.includes('product name')||cell==='name'||cell==='description')nameCol=c;
+        if(cell==='item name'||cell==='product name'||cell==='name'||cell==='description'||cell==='item')nameCol=c;
+        if(cell==='item code'||cell==='code'||cell==='sku'||cell==='product code')codeCol=c;
+        if(cell.includes('closing')||cell.includes('stock qty')||cell==='qty'||cell==='quantity'||cell==='stock quantity')qtyCol=c;
+        if(cell==='family'||cell==='category'||cell==='type')famCol=c;
       }
-      if(codeCol>=0&&qtyCol>=0){headerRow=r;break;}
+      if((nameCol>=0||codeCol>=0)&&qtyCol>=0){headerRow=r;break;}
     }
     
-    console.log('Headers found - Code col:',codeCol,'Qty col:',qtyCol,'Name col:',nameCol);
-    
-    if(codeCol<0){
-      // Show first few rows to help debug
-      toast('Cannot find product code column. Check console for details.','error');
-      console.log('First 3 rows:',rows.slice(0,3));
+    if(nameCol<0&&codeCol<0){
+      toast('Cannot find name/code column','error');
+      console.log('Headers row 0:',rows[0]);
       return;
     }
     if(qtyCol<0){
-      toast('Cannot find quantity column. Check console for details.','error');
+      toast('Cannot find quantity column','error');
       console.log('Headers:',rows[headerRow]);
       return;
     }
     
-    var updated=0,notFound=0,notFoundList=[];
+    console.log('Headers found — Code:'+codeCol+' Name:'+nameCol+' Qty:'+qtyCol+' Family:'+famCol);
+    
+    var updated=0, created=0, skipped=0;
+    var newProducts=[];
+    
+    // Skip services/freight keywords
+    var skipKeywords=['freight','customs','packing','courier','clearance','charges',
+      'service','insurance','duty','transport','loading','forwarding','commission',
+      'bank','assessment','repair','rework','installation','surcharge','fee',
+      'aai ','cfs ','fsf ','loh ','ifs ','awb ','do ','cc ','fob'];
+    
     for(var i=headerRow+1;i<rows.length;i++){
       var row=rows[i];
-      var code=(row[codeCol]||'').toString().trim();
+      var name=(row[nameCol>=0?nameCol:codeCol]||'').toString().trim();
+      var code=codeCol>=0?(row[codeCol]||'').toString().trim():'';
       var qty=parseFloat(row[qtyCol])||0;
-      if(!code)continue;
+      if(qty<0)qty=0; // treat negative as 0
       
-      // Find product in PRODUCTS array
-      var pIdx=PRODUCTS.findIndex(function(p){
-        return p.c===code||p.c.toLowerCase()===code.toLowerCase();
-      });
+      if(!name&&!code)continue;
+      
+      // Skip service/freight items
+      var nameLower=name.toLowerCase();
+      var shouldSkip=skipKeywords.some(function(kw){return nameLower.startsWith(kw)||nameLower.includes(' '+kw);});
+      if(shouldSkip){skipped++;continue;}
+      
+      // Use name as code if no code column
+      var productCode=code||name.substring(0,30).replace(/[^a-zA-Z0-9\-\_\*\.]/g,'-').replace(/-+/g,'-');
+      
+      // Get family
+      var family='Short Wave IR';
+      if(famCol>=0&&row[famCol]){
+        family=row[famCol].toString().trim()||'Short Wave IR';
+      } else {
+        // Auto-detect from name
+        var nl=nameLower;
+        if(nl.includes('ceramic infrared')||nl.includes('fsr ')||nl.includes('fsc ')||nl.includes('hts ')||nl.includes('hsc ')||nl.includes('sfe '))family='Ceramic IR Heater';
+        else if(nl.includes('medium wave')||nl.includes('mwir')||nl.includes('milky quartz')&&nl.includes('heater'))family='Medium Wave IR';
+        else if(nl.includes('quartz tube')||nl.includes('quartz rod')||nl.includes('quartz plate')||nl.includes('quartz disc')||nl.includes('milky quartz tube'))family='Quartz Heater';
+        else if(nl.includes('uv lamp')||nl.includes('uv mercury')||nl.includes('uv curing')||nl.includes('uv bulb'))family='UV Lamp';
+        else if(nl.includes('tubular')||nl.includes('immersion')||nl.includes('finned heater')||nl.includes('u type'))family='Tubular Heater';
+        else if(nl.includes('cartridge'))family='Cartridge Heater';
+        else if(nl.includes('short wave')||nl.includes('swir')||nl.includes('infrared heater')&&!nl.includes('medium'))family='Short Wave IR';
+      }
+      
+      // Find existing product - smart prefix matching (NHA/HSA/AI prefix aware)
+      var pIdx=-1;
+      var codeClean=productCode.replace(/^(NHA|HSA|HYA|NNA|HLA|AI|HO)/i,'').toLowerCase().trim();
+      var codeFull=productCode.toLowerCase().trim();
+      
+      for(var pi=0;pi<PRODUCTS.length;pi++){
+        var pc=PRODUCTS[pi].c.toLowerCase();
+        var pcClean=pc.replace(/^(NHA|HSA|HYA|NNA|HLA|AI|HO)/i,'').toLowerCase().trim();
+        
+        // Exact match
+        if(pc===codeFull||pc===code.toLowerCase()){pIdx=pi;break;}
+        // Match after stripping prefix from both
+        if(pcClean===codeClean&&codeClean.length>5){pIdx=pi;break;}
+        // One has prefix, other doesn't
+        if(pcClean===codeFull&&codeClean.length>5){pIdx=pi;break;}
+        if(codeClean===pc&&codeClean.length>5){pIdx=pi;break;}
+      }
       
       if(pIdx>=0){
         PRODUCTS[pIdx].q=qty;
         updated++;
-      } else {
-        notFound++;
-        notFoundList.push(code);
+      } else if(productCode&&name&&qty>=0){
+        // Create new product
+        var newProd={c:productCode, d:name, q:qty, f:family};
+        PRODUCTS.push(newProd);
+        newProducts.push(newProd);
+        created++;
       }
     }
     
-    // Recalculate balances
     recalcBal();
     checkAlerts();
     renderStock();
     renderDashboard();
     
-    toast('Stock updated: '+updated+' products. Not found: '+notFound,'success');
-    if(notFoundList.length>0){
-      console.log('Products not found in app:',notFoundList.slice(0,20));
+    var msg='Updated: '+updated+' | Created: '+created+' | Skipped: '+skipped;
+    toast(msg,'success');
+    console.log(msg);
+    if(newProducts.length>0){
+      console.log('New products added:',newProducts.slice(0,10));
     }
     input.value='';
   });
