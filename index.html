@@ -2034,24 +2034,43 @@ function importSalesExcel(input){
       return;
     }
     
-    toast('Saving '+txns.length+' transactions...','');
-    var saved=0;
-    function saveNext(idx){
-      if(idx>=txns.length){
-        recalcBal();checkAlerts();renderStock();renderDashboard();renderLedger();
-        toast('Imported '+saved+' transactions, '+skipped+' skipped','success');
-        return;
-      }
-      // Check if already imported (avoid duplicates)
-      var exists=TRANSACTIONS.find(function(t){return t.ref===txns[idx].ref&&t.party===txns[idx].party;});
-      if(exists){saved++;saveNext(idx+1);return;}
-      
-      TRANSACTIONS.unshift(txns[idx]);
-      sb.from('transactions').insert({data:txns[idx]}).then(function(){
-        saved++;saveNext(idx+1);
-      });
+    // Filter out already imported (by ref+party)
+    var newTxns=txns.filter(function(t){
+      return !TRANSACTIONS.find(function(ex){return ex.ref===t.ref&&ex.party===t.party;});
+    });
+    
+    toast('Saving '+newTxns.length+' new transactions ('+skipped+' skipped)...','');
+    
+    if(!newTxns.length){
+      toast('All transactions already imported','warn');
+      input.value='';return;
     }
-    saveNext(0);
+    
+    // Add to local immediately
+    newTxns.forEach(function(t){TRANSACTIONS.unshift(t);});
+    recalcBal();checkAlerts();renderStock();renderDashboard();
+    
+    // Batch save to Supabase in chunks of 50
+    var rows=newTxns.map(function(t){return {data:t};});
+    var chunkSize=50;
+    var chunks=[];
+    for(var c=0;c<rows.length;c+=chunkSize){
+      chunks.push(rows.slice(c,c+chunkSize));
+    }
+    
+    toast('Syncing '+rows.length+' transactions to cloud in '+chunks.length+' batches...','');
+    
+    var batchDone=0;
+    chunks.forEach(function(chunk){
+      sb.from('transactions').insert(chunk).then(function(r){
+        batchDone++;
+        if(r.error)console.warn('Batch error:',r.error.message);
+        if(batchDone===chunks.length){
+          toast('✅ Imported '+newTxns.length+' transactions, '+skipped+' skipped','success');
+          renderLedger();
+        }
+      });
+    });
     input.value='';
   });
 }
@@ -4440,7 +4459,13 @@ function switchPage(p){
   else if(p==='customers')renderCustomers();
   else if(p==='suppliers')renderSuppliers();
   else if(p==='followup')renderFollowup();
-  else if(p==='ledger'){loadTxns().then(function(){loadPayments().then(function(){renderLedger();});});}
+  else if(p==='ledger'){
+    (async function(){
+      await loadTxns();
+      await loadPayments();
+      renderLedger();
+    })();
+  }
   else if(p==='users'){renderUserList();updatePermDefaults();}
   else if(p==='staff-report')renderStaffReport();
   else if(p==='purchase')loadEnquiries();
