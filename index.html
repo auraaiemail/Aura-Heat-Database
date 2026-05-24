@@ -1307,10 +1307,14 @@ async function logActivity(type, details){
 function recalcBal(){
   BALANCE = {};
   PRODUCTS.forEach(p=>{BALANCE[p.c]=p.q;});
-  TRANSACTIONS.forEach(t=>(t.items||[]).forEach(it=>{
-    if(BALANCE[it.code]===undefined)BALANCE[it.code]=0;
-    BALANCE[it.code]+=(t.type==='IN'?1:-1)*it.qty;
-  }));
+  TRANSACTIONS.forEach(function(t){
+    // Skip historical Vyappar imports - they are already reflected in opening stock
+    if(t.remarks==='Imported from Vyappar')return;
+    (t.items||[]).forEach(function(it){
+      if(BALANCE[it.code]===undefined)BALANCE[it.code]=0;
+      BALANCE[it.code]+=(t.type==='IN'?1:-1)*(Number(it.qty)||0);
+    });
+  });
 }
 
 function getLastSaleDate(code){
@@ -2570,19 +2574,29 @@ function showCustomersOnMap(){
 function populateCustFilters(){
   var stateEl=document.getElementById('cust-state-filter');
   if(!stateEl)return;
-  // Always repopulate if only default option
-  if(stateEl.options.length<=1){
-    var states=new Set();
-    CUSTOMERS_DB.forEach(function(c){
-      if(c.primary_state&&c.primary_state.trim())states.add(c.primary_state.trim());
-      (c.companies||[]).forEach(function(co){if(co.state&&co.state.trim())states.add(co.state.trim());});
+  if(stateEl.options.length>1)return; // already populated
+  var states=new Set();
+  CUSTOMERS_DB.forEach(function(c){
+    // Check all possible state fields
+    var s=c.primary_state||c.state||'';
+    if(s.trim())states.add(s.trim());
+    // Check companies array
+    (c.companies||[]).forEach(function(co){
+      var cs=co.state||co.primary_state||'';
+      if(cs.trim())states.add(cs.trim());
     });
-    [...states].sort().forEach(function(s){
-      var opt=document.createElement('option');opt.value=s;opt.textContent=s;
-      stateEl.appendChild(opt);
-    });
-    console.log('Populated states:',states.size);
+    // Check address fields
+    if(c.address_state&&c.address_state.trim())states.add(c.address_state.trim());
+  });
+  if(states.size===0){
+    console.log('No states found in customer data - check customer records have state filled');
+    return;
   }
+  [...states].sort().forEach(function(s){
+    var opt=document.createElement('option');opt.value=s;opt.textContent=s;
+    stateEl.appendChild(opt);
+  });
+  console.log('Populated',states.size,'states');
 }
 
 function updateCityFilter(){
