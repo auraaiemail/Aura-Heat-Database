@@ -6,6 +6,7 @@
 <title>Aura Heat Energy</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#BF1B2C">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -469,6 +470,24 @@ tr:hover td{background:#FFFAF9}
           <div class="search-box" style="flex:1;min-width:200px;position:relative">
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>
             <input type="text" id="stock-q" placeholder="Search product code or description..." oninput="renderStock()" style="padding-left:32px">
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:12px;color:#6B7280">Import from Vyappar Excel:</div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-xs" style="background:#F3F4F6;color:#374151" onclick="downloadProductTemplate()">⬇️ Download Template</button>
+              <label class="btn btn-xs" style="background:#DCFCE7;color:#166534;cursor:pointer">
+                📊 Upload Stock Excel
+                <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importStockExcel(this)">
+              </label>
+              <label class="btn btn-xs" style="background:#EFF6FF;color:#1d4ed8;cursor:pointer">
+                💰 Outstanding Excel
+                <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importOutstandingExcel(this)">
+              </label>
+              <label class="btn btn-xs" style="background:#FEF3C7;color:#92400e;cursor:pointer">
+                📋 Sales Excel
+                <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importSalesExcel(this)">
+              </label>
+            </div>
           </div>
           <div class="pills">
             <button class="pill active" onclick="setStockFilter('all',this)">All</button>
@@ -1074,28 +1093,53 @@ async function deletePayment(id){
 
 async function loadCustomersDB(){
   try{
-    // Load from customers_data first (has all 943 with latest outstanding)
-    const {data,error} = await sb.from('customers_data').select('data').limit(1);
-    console.log('customers_data rows:', data?.length, 'error:', error?.message);
-    if(data&&data.length>0&&Array.isArray(data[0].data)&&data[0].data.length>0){
-      CUSTOMERS_DB = data[0].data;
-      console.log('Loaded',CUSTOMERS_DB.length,'customers from customers_data');
-      updateFollowupBadges();
-      renderDashboard();
-      return;
+    // Start with embedded customers as base
+    var base=CUSTOMERS.map(c => migrateOldCustomer(c));
+    
+    // Load updated values from customers table (individual records saved via saveCustomer)
+    const {data:custRows}=await sb.from('customers').select('id,name,outstanding,priority,data,updated_at');
+    if(custRows&&custRows.length>0){
+      console.log('Merging',custRows.length,'updated customers from customers table');
+      custRows.forEach(function(row){
+        var idx=base.findIndex(function(c){return c.id===row.id;});
+        if(idx>=0){
+          // Merge: overlay Supabase values onto embedded customer
+          if(row.data&&typeof row.data==='object') base[idx]=Object.assign({},base[idx],row.data);
+          base[idx].outstanding=row.outstanding||0;
+          base[idx].priority=row.priority||base[idx].priority;
+        } else if(row.data){
+          base.push(row.data);
+        }
+      });
     }
-    // No data in customers_data - initialize it with embedded customers
-    console.log('customers_data empty - initializing with embedded data');
-    CUSTOMERS_DB = CUSTOMERS.map(c => migrateOldCustomer(c));
-    // Save to customers_data so future updates persist
-    sb.from('customers_data').insert({data:CUSTOMERS_DB}).then(function(r){
-      console.log('customers_data initialized:', r.error?r.error.message:'OK');
-    });
+    
+    // Also check customers_data for any bulk saves
+    const {data:cdRows}=await sb.from('customers_data').select('data').limit(1);
+    console.log('customers_data rows:',cdRows?.length,'error: undefined');
+    if(cdRows&&cdRows.length>0&&Array.isArray(cdRows[0].data)&&cdRows[0].data.length>0){
+      var cdData=cdRows[0].data;
+      console.log('Loaded',cdData.length,'customers from customers_data');
+      // Merge customers_data outstanding into base
+      cdData.forEach(function(cd){
+        var idx=base.findIndex(function(c){return c.id===cd.id;});
+        if(idx>=0&&cd.outstanding!==undefined){
+          // Use whichever is more recently updated
+          var baseDate=base[idx].updated_at||'';
+          var cdDate=cd.updated_at||'';
+          if(cdDate>=baseDate){
+            base[idx].outstanding=cd.outstanding||0;
+            base[idx].priority=cd.priority||base[idx].priority;
+          }
+        }
+      });
+    }
+    
+    CUSTOMERS_DB=base;
     updateFollowupBadges();
     renderDashboard();
   }catch(e){
     console.error('loadCustomersDB error:',e);
-    CUSTOMERS_DB = CUSTOMERS.map(c => migrateOldCustomer(c));
+    CUSTOMERS_DB=CUSTOMERS.map(c => migrateOldCustomer(c));
   }
 }
 
@@ -1195,22 +1239,44 @@ async function saveCustomer(cust){
     // Update local DB immediately
     var idx=CUSTOMERS_DB.findIndex(function(c){return c.id===cust.id;});
     if(idx>=0) CUSTOMERS_DB[idx]=cust; else CUSTOMERS_DB.push(cust);
-    console.log('saveCustomer: saving',cust.name,'outstanding:',cust.outstanding);
     
-    // Get customers_data row id
+    // Save individual customer to customers table (upsert by id)
+    var toSave={
+      id:cust.id,
+      name:cust.name,
+      type:cust.type||'customer',
+      outstanding:cust.outstanding||0,
+      priority:cust.priority||'WARM',
+      data:cust,
+      updated_at:cust.updated_at||new Date().toISOString()
+    };
+    
+    var r=await sb.from('customers').upsert(toSave,{onConflict:'id'});
+    if(!r.error){
+      console.log('saveCustomer OK:',cust.name,'outstanding:',cust.outstanding);
+      return true;
+    }
+    console.warn('customers upsert failed:',r.error.message,', trying customers_data...');
+    
+    // Fallback: update customers_data blob (split into chunks if needed)
     var r2=await sb.from('customers_data').select('id').limit(1);
-    console.log('customers_data row:', r2.data, 'error:', r2.error?.message);
-    
     if(r2.data&&r2.data.length){
-      var upd=await sb.from('customers_data').update({data:CUSTOMERS_DB}).eq('id',r2.data[0].id);
-      console.log('Update result:', upd.error?'ERROR: '+upd.error.message:'SUCCESS');
-    } else {
-      var ins=await sb.from('customers_data').insert({data:CUSTOMERS_DB});
-      console.log('Insert result:', ins.error?'ERROR: '+ins.error.message:'SUCCESS');
+      // Save only changed customer in a separate smaller update
+      var snapshot=CUSTOMERS_DB.map(function(c){
+        return {id:c.id,name:c.name,outstanding:c.outstanding||0,
+                priority:c.priority,type:c.type,
+                contacts:c.contacts,companies:c.companies,
+                primary_phone:c.primary_phone,primary_city:c.primary_city,
+                business_type:c.business_type,notes:c.notes,
+                last_order_date:c.last_order_date,next_followup:c.next_followup,
+                updated_at:c.updated_at};
+      });
+      var upd=await sb.from('customers_data').update({data:snapshot}).eq('id',r2.data[0].id);
+      console.log('customers_data update:', upd.error?'ERROR: '+upd.error.message:'SUCCESS');
     }
     return true;
   }catch(e){
-    console.error('saveCustomer exception:',e);
+    console.error('saveCustomer exception:',e.message);
     return true;
   }
 }
@@ -1624,6 +1690,250 @@ async function saveStockCorrection(code, oldBal){
   logActivity('stock_correction',{code,oldBal,newQty,reason,by:curName});
   renderStock();
   renderDashboard();
+}
+
+// ═══ EXCEL IMPORT FUNCTIONS ═══
+
+function readExcel(file, callback){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var data=new Uint8Array(e.target.result);
+    var wb=XLSX.read(data,{type:'array'});
+    var ws=wb.Sheets[wb.SheetNames[0]];
+    var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    callback(rows);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+
+function downloadProductTemplate(){
+  // Build CSV with current products
+  var rows=[['Item Code','Description','Family','Current Qty']];
+  PRODUCTS.forEach(function(p){
+    var b=BALANCE[p.c]!==undefined?BALANCE[p.c]:p.q;
+    rows.push([p.c, p.d, p.f||'', b]);
+  });
+  
+  // Convert to CSV
+  var csv=rows.map(function(row){
+    return row.map(function(cell){
+      var s=String(cell||'');
+      if(s.includes(',')|| s.includes('"')||s.includes('\n')){
+        s='"'+s.replace(/"/g,'\"\""')+'"';
+      }
+      return s;
+    }).join(',');
+  }).join('\n');
+  
+  // Download
+  var blob=new Blob([csv],{type:'text/csv'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='Aura_Products_Template_'+today()+'.csv';
+  a.click();
+  toast('Template downloaded — clean and upload back','success');
+}
+function importStockExcel(input){
+  var file=input.files[0];
+  if(!file)return;
+  toast('Reading stock Excel...','');
+  readExcel(file,function(rows){
+    if(rows.length<2){toast('No data found in Excel','error');return;}
+    
+    // Find header row - look for item code column
+    var headerRow=0;
+    var codeCol=-1,qtyCol=-1,nameCol=-1;
+    for(var r=0;r<Math.min(5,rows.length);r++){
+      for(var c=0;c<rows[r].length;c++){
+        var cell=(rows[r][c]||'').toString().toLowerCase().trim();
+        if(cell.includes('item code')||cell.includes('product code')||cell==='code'||cell==='sku')codeCol=c;
+        if(cell.includes('closing')||cell.includes('current')||cell.includes('stock')||cell==='qty'||cell==='quantity')qtyCol=c;
+        if(cell.includes('item name')||cell.includes('product name')||cell==='name'||cell==='description')nameCol=c;
+      }
+      if(codeCol>=0&&qtyCol>=0){headerRow=r;break;}
+    }
+    
+    console.log('Headers found - Code col:',codeCol,'Qty col:',qtyCol,'Name col:',nameCol);
+    
+    if(codeCol<0){
+      // Show first few rows to help debug
+      toast('Cannot find product code column. Check console for details.','error');
+      console.log('First 3 rows:',rows.slice(0,3));
+      return;
+    }
+    if(qtyCol<0){
+      toast('Cannot find quantity column. Check console for details.','error');
+      console.log('Headers:',rows[headerRow]);
+      return;
+    }
+    
+    var updated=0,notFound=0,notFoundList=[];
+    for(var i=headerRow+1;i<rows.length;i++){
+      var row=rows[i];
+      var code=(row[codeCol]||'').toString().trim();
+      var qty=parseFloat(row[qtyCol])||0;
+      if(!code)continue;
+      
+      // Find product in PRODUCTS array
+      var pIdx=PRODUCTS.findIndex(function(p){
+        return p.c===code||p.c.toLowerCase()===code.toLowerCase();
+      });
+      
+      if(pIdx>=0){
+        PRODUCTS[pIdx].q=qty;
+        updated++;
+      } else {
+        notFound++;
+        notFoundList.push(code);
+      }
+    }
+    
+    // Recalculate balances
+    recalcBal();
+    checkAlerts();
+    renderStock();
+    renderDashboard();
+    
+    toast('Stock updated: '+updated+' products. Not found: '+notFound,'success');
+    if(notFoundList.length>0){
+      console.log('Products not found in app:',notFoundList.slice(0,20));
+    }
+    input.value='';
+  });
+}
+
+function importOutstandingExcel(input){
+  var file=input.files[0];
+  if(!file)return;
+  toast('Reading outstanding Excel...','');
+  readExcel(file,function(rows){
+    if(rows.length<2){toast('No data found','error');return;}
+    
+    // Find header row
+    var headerRow=0;
+    var nameCol=-1,outCol=-1;
+    for(var r=0;r<Math.min(5,rows.length);r++){
+      for(var c=0;c<rows[r].length;c++){
+        var cell=(rows[r][c]||'').toString().toLowerCase().trim();
+        if(cell.includes('party')||cell.includes('customer')||cell.includes('name'))nameCol=c;
+        if(cell.includes('outstanding')||cell.includes('balance')||cell.includes('amount')||cell.includes('due'))outCol=c;
+      }
+      if(nameCol>=0&&outCol>=0){headerRow=r;break;}
+    }
+    
+    if(nameCol<0||outCol<0){
+      toast('Cannot find name/outstanding columns','error');
+      console.log('Headers:',rows[0]);
+      return;
+    }
+    
+    var updated=0,notFound=0;
+    for(var i=headerRow+1;i<rows.length;i++){
+      var row=rows[i];
+      var name=(row[nameCol]||'').toString().trim();
+      var amt=parseFloat(row[outCol])||0;
+      if(!name)continue;
+      
+      var cIdx=CUSTOMERS_DB.findIndex(function(c){
+        return c.name.toLowerCase()===name.toLowerCase()||
+               c.name.toLowerCase().includes(name.toLowerCase())||
+               name.toLowerCase().includes(c.name.toLowerCase());
+      });
+      
+      if(cIdx>=0){
+        CUSTOMERS_DB[cIdx].outstanding=amt;
+        if(amt>0)CUSTOMERS_DB[cIdx].priority='PAYMENT_DUE';
+        else if(CUSTOMERS_DB[cIdx].priority==='PAYMENT_DUE')CUSTOMERS_DB[cIdx].priority='ACTIVE';
+        updated++;
+        // Save to Supabase
+        saveCustomer(CUSTOMERS_DB[cIdx]);
+      } else {
+        notFound++;
+      }
+    }
+    
+    checkAlerts();
+    renderCustomers();
+    renderFollowup();
+    renderDashboard();
+    toast('Outstanding updated: '+updated+' customers. Not matched: '+notFound,'success');
+    input.value='';
+  });
+}
+
+function importSalesExcel(input){
+  var file=input.files[0];
+  if(!file)return;
+  toast('Reading sales Excel...','');
+  readExcel(file,function(rows){
+    if(rows.length<2){toast('No data found','error');return;}
+    
+    // Find headers
+    var headerRow=0;
+    var dateCol=-1,partyCol=-1,codeCol=-1,qtyCol=-1,rateCol=-1,refCol=-1;
+    for(var r=0;r<Math.min(5,rows.length);r++){
+      for(var c=0;c<rows[r].length;c++){
+        var cell=(rows[r][c]||'').toString().toLowerCase().trim();
+        if(cell.includes('date'))dateCol=c;
+        if(cell.includes('party')||cell.includes('customer'))partyCol=c;
+        if(cell.includes('item code')||cell.includes('product code')||cell==='code')codeCol=c;
+        if(cell==='qty'||cell.includes('quantity'))qtyCol=c;
+        if(cell.includes('rate')||cell.includes('price'))rateCol=c;
+        if(cell.includes('invoice')||cell.includes('bill')||cell.includes('ref'))refCol=c;
+      }
+      if(dateCol>=0&&partyCol>=0&&codeCol>=0&&qtyCol>=0){headerRow=r;break;}
+    }
+    
+    if(codeCol<0||qtyCol<0){
+      toast('Cannot find required columns','error');
+      console.log('Headers:',rows[headerRow||0]);
+      return;
+    }
+    
+    // Group by invoice/date+party
+    var txnMap={};
+    for(var i=headerRow+1;i<rows.length;i++){
+      var row=rows[i];
+      var code=(row[codeCol]||'').toString().trim();
+      var qty=parseFloat(row[qtyCol])||0;
+      if(!code||!qty)continue;
+      
+      var date=(row[dateCol]||'').toString().trim();
+      var party=(row[partyCol]||'').toString().trim();
+      var rate=parseFloat(row[rateCol])||0;
+      var ref=(row[refCol]||'').toString().trim()||'IMP-'+date;
+      var key=ref||( date+'_'+party);
+      
+      if(!txnMap[key]){
+        txnMap[key]={
+          id:crypto.randomUUID(),
+          date:date,party:party,ref:ref||('IMP-'+i),
+          type:'OUT',billtype:'with_gst',
+          remarks:'Imported from Vyappar',
+          items:[],user:curName,ts:new Date().toISOString()
+        };
+      }
+      var prod=PRODUCTS.find(function(p){return p.c===code;});
+      txnMap[key].items.push({code:code,desc:prod?prod.d:code,qty:qty,rate:rate});
+    }
+    
+    var txns=Object.values(txnMap);
+    if(!txns.length){toast('No transactions found','error');return;}
+    
+    // Save all transactions
+    var saved=0;
+    var saveNext=function(idx){
+      if(idx>=txns.length){
+        recalcBal();checkAlerts();renderStock();renderDashboard();
+        toast('Imported '+saved+' transactions ('+txns.reduce(function(s,t){return s+t.items.length;},0)+' line items)','success');
+        return;
+      }
+      saveTxn(txns[idx]).then(function(){saved++;saveNext(idx+1);});
+    };
+    saveNext(0);
+    input.value='';
+  });
 }
 function renderStock(){
   const q=(document.getElementById('stock-q')?.value||'').toLowerCase();
@@ -3999,7 +4309,7 @@ function switchPage(p){
   else if(p==='customers')renderCustomers();
   else if(p==='suppliers')renderSuppliers();
   else if(p==='followup')renderFollowup();
-  else if(p==='ledger')renderLedger();
+  else if(p==='ledger'){loadTxns().then(function(){loadPayments().then(function(){renderLedger();});});}
   else if(p==='users'){renderUserList();updatePermDefaults();}
   else if(p==='staff-report')renderStaffReport();
   else if(p==='purchase')loadEnquiries();
