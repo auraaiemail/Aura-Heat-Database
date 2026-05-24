@@ -2061,12 +2061,20 @@ function importSalesExcel(input){
     toast('Syncing '+rows.length+' transactions to cloud in '+chunks.length+' batches...','');
     
     var batchDone=0;
-    chunks.forEach(function(chunk){
+    var batchErrors=0;
+    chunks.forEach(function(chunk,ci){
       sb.from('transactions').insert(chunk).then(function(r){
         batchDone++;
-        if(r.error)console.warn('Batch error:',r.error.message);
+        if(r.error){
+          batchErrors++;
+          console.error('Batch '+ci+' error:',r.error.message,r.error.code);
+        } else {
+          console.log('Batch '+ci+'/'+chunks.length+' saved OK ('+chunk.length+' rows)');
+        }
         if(batchDone===chunks.length){
-          toast('✅ Imported '+newTxns.length+' transactions, '+skipped+' skipped','success');
+          var msg='✅ Imported '+newTxns.length+' transactions, '+skipped+' skipped';
+          if(batchErrors>0)msg+=' ('+batchErrors+' batch errors - check console)';
+          toast(msg,'success');
           renderLedger();
         }
       });
