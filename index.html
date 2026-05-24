@@ -543,6 +543,13 @@ tr:hover td{background:#FFFAF9}
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>
             <input type="text" id="cust-q" placeholder="Search customer name, city, GST..." oninput="renderCustomers()" style="padding-left:32px">
           </div>
+          <select id="cust-state-filter" onchange="renderCustomers();updateCityFilter()" style="min-width:130px">
+            <option value="">All States</option>
+          </select>
+          <select id="cust-city-filter" onchange="renderCustomers()" style="min-width:130px">
+            <option value="">All Cities</option>
+          </select>
+          <button class="btn btn-xs" style="background:#EFF6FF;color:#1d4ed8;white-space:nowrap" onclick="showCustomersOnMap()">🗺 Map View</button>
           <select id="cust-filter-type" onchange="renderCustomers()" style="width:130px">
             <option value="">All Bill Types</option>
             <option value="with_gst">With GST</option>
@@ -2512,11 +2519,101 @@ async function saveOutstandingAdjust(custId){
   
   logActivity('outstanding_adjustment',{customer:c.name,from:oldAmt,to:newAmt,reason:reason});
   document.getElementById('adj-modal')?.remove();
+
+function showCustomersOnMap(){
+  var stateF=document.getElementById('cust-state-filter')?.value||'';
+  var cityF=document.getElementById('cust-city-filter')?.value||'';
+  var q=document.getElementById('cust-q')?.value||'';
+  
+  var list=CUSTOMERS_DB.filter(function(c){return c.type!=='supplier';});
+  if(stateF)list=list.filter(function(c){
+    var s=c.primary_state||(c.companies&&c.companies[0]&&c.companies[0].state)||'';
+    return s===stateF;
+  });
+  if(cityF)list=list.filter(function(c){
+    var ci=c.primary_city||(c.companies&&c.companies[0]&&c.companies[0].city)||'';
+    return ci===cityF;
+  });
+  
+  if(!list.length){toast('No customers match filter','warn');return;}
+  
+  // Build Google Maps search query
+  var location=cityF||stateF||'India';
+  var query=list.slice(0,20).map(function(c){
+    return c.primary_city||c.primary_state||'';
+  }).filter(Boolean).join('|');
+  
+  // Open Google Maps with the area
+  var mapsUrl='https://www.google.com/maps/search/'+encodeURIComponent(location);
+  if(stateF&&!cityF){
+    // Show all cities in state as list
+    var cities=[...new Set(list.map(function(c){return c.primary_city;}).filter(Boolean))];
+    var info='Customers in '+stateF+':\n\n';
+    info+=cities.map(function(city){
+      var count=list.filter(function(c){return c.primary_city===city;}).length;
+      return city+': '+count+' customer(s)';
+    }).join('\n');
+    alert(info);
+    return;
+  }
+  window.open(mapsUrl,'_blank');
+  toast('Showing '+list.length+' customers in '+location,'success');
+}
   toast('Outstanding updated: ₹'+newAmt.toLocaleString('en-IN'),'success');
   checkAlerts();renderCustomers();renderFollowup();renderDashboard();
 }
+
+function populateCustFilters(){
+  var states=new Set();
+  var cities=new Set();
+  CUSTOMERS_DB.forEach(function(c){
+    if(c.primary_state)states.add(c.primary_state);
+    if(c.primary_city)cities.add(c.primary_city);
+    // Also check companies array
+    (c.companies||[]).forEach(function(co){
+      if(co.state)states.add(co.state);
+      if(co.city)cities.add(co.city);
+    });
+  });
+  var stateEl=document.getElementById('cust-state-filter');
+  if(stateEl&&stateEl.options.length<=1){
+    [...states].sort().forEach(function(s){
+      var opt=document.createElement('option');opt.value=s;opt.textContent=s;
+      stateEl.appendChild(opt);
+    });
+  }
+  var cityEl=document.getElementById('cust-city-filter');
+  if(cityEl&&cityEl.options.length<=1){
+    [...cities].sort().forEach(function(c){
+      var opt=document.createElement('option');opt.value=c;opt.textContent=c;
+      cityEl.appendChild(opt);
+    });
+  }
+}
+
+function updateCityFilter(){
+  var state=document.getElementById('cust-state-filter')?.value||'';
+  var cityEl=document.getElementById('cust-city-filter');
+  if(!cityEl)return;
+  cityEl.innerHTML='<option value="">All Cities</option>';
+  var cities=new Set();
+  CUSTOMERS_DB.forEach(function(c){
+    var custState=c.primary_state||(c.companies&&c.companies[0]&&c.companies[0].state)||'';
+    if(!state||custState===state){
+      if(c.primary_city)cities.add(c.primary_city);
+      (c.companies||[]).forEach(function(co){if(co.city)cities.add(co.city);});
+    }
+  });
+  [...cities].sort().forEach(function(city){
+    var opt=document.createElement('option');opt.value=city;opt.textContent=city;
+    cityEl.appendChild(opt);
+  });
+}
 function renderCustomers(){
+  populateCustFilters();
   const q=(document.getElementById('cust-q')?.value||'').toLowerCase();
+  const stateF=document.getElementById('cust-state-filter')?.value||'';
+  const cityF=document.getElementById('cust-city-filter')?.value||'';
   let list=CUSTOMERS_DB.filter(c=>c.type==='customer'||!c.type);
   if(custFilter!=='all')list=list.filter(c=>c.gst_type===custFilter);
   if(q)list=list.filter(c=>c.name.toLowerCase().includes(q)||
