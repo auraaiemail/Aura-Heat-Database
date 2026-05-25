@@ -2254,12 +2254,39 @@ function showProductFull(p, el){
   var idleMo=typeof idleMonths!=='undefined'?idleMonths:2;
   var isIdle=days&&days>=(idleMo*30)&&b>0;
 
-  // Customer purchase history
+  // Customer purchase history - smart matching
+  function prodCodeMatch(itCode, itDesc, prodCode, prodDesc){
+    if(!itCode&&!itDesc)return false;
+    var a=(itCode||'').toLowerCase().trim();
+    var b=(prodCode||'').toLowerCase().trim();
+    if(a===b)return true;
+    // Strip NHA/HSA prefix
+    var pxs=['nha','hsa','hya','nna','hla','ho','ai'];
+    var as=a, bs=b;
+    pxs.forEach(function(px){
+      if(as.startsWith(px))as=as.slice(px.length);
+      if(bs.startsWith(px))bs=bs.slice(px.length);
+    });
+    if(as===bs&&as.length>5)return true;
+    // Spec match from descriptions
+    function getSpecs(d){
+      if(!d)return null;
+      var u=d.toUpperCase();
+      var hl=u.match(/HL[:\s-]*(\d+)/);
+      var ol=u.match(/OL[:\s-]*(\d+)/);
+      var wv=u.match(/(\d+)W[/\s]*(\d+)V/);
+      if(!hl||!ol||!wv)return null;
+      return hl[1]+'|'+ol[1]+'|'+wv[1]+'|'+wv[2];
+    }
+    var ps=getSpecs(prodDesc), is=getSpecs(itDesc);
+    if(ps&&is&&ps===is)return true;
+    return false;
+  }
   var custMap={};
   TRANSACTIONS.forEach(function(t){
     if(t.type!=='OUT')return;
     (t.items||[]).forEach(function(it){
-      if(it.code!==p.c)return;
+      if(!prodCodeMatch(it.code,it.desc,p.c,p.d))return;
       if(!custMap[t.party])custMap[t.party]={name:t.party,totalQty:0,orders:0,lastDate:t.date,lastRef:t.ref};
       custMap[t.party].totalQty+=Number(it.qty)||0;
       custMap[t.party].orders++;
