@@ -1270,12 +1270,23 @@ async function saveCustomer(cust){
     // Save individual customer to customers table (upsert by id)
     var toSave={
       id:cust.id,
-      name:cust.name,
+      name:cust.name||'',
       type:cust.type||'customer',
       outstanding:cust.outstanding||0,
       priority:cust.priority||'WARM',
-      data:cust,
-      updated_at:cust.updated_at||new Date().toISOString()
+      city:cust.primary_city||cust.city||'',
+      state:cust.primary_state||cust.state||'',
+      area:cust.area||'',
+      street:cust.street||'',
+      pincode:cust.pincode||'',
+      notes:cust.notes||'',
+      business_type:cust.business_type||'',
+      assigned_staff_name:cust.assigned_staff_name||'',
+      next_followup:cust.next_followup||null,
+      last_contacted:cust.last_contacted||null,
+      contacts:cust.contacts||[],
+      companies:cust.companies||[],
+      updated_at:new Date().toISOString()
     };
     
     var r=await sb.from('customers').upsert(toSave,{onConflict:'id'});
