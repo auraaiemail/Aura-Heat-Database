@@ -4523,7 +4523,8 @@ async function renderUserList(){
         }).join('')}
       </div>
       <div class="action-row" style="margin-top:8px">
-        <button class="btn btn-xs btn-ghost" onclick="editUserPerms('${u.id}')">✏️ Edit Permissions</button>
+        <button class="btn btn-xs btn-ghost" onclick="editUserPerms('${u.id}')">✏️ Edit</button>
+        <button class="btn btn-xs" style="background:#FEE2E2;color:#BF1B2C" onclick="deleteUser('${u.id}')">🗑 Delete</button>
       </div>
     </div>`).join('');
 }
@@ -4535,10 +4536,129 @@ async function changeUserRole(userId,newRole){
 }
 
 async function editUserPerms(userId){
-  const u=USERS_LIST.find(x=>x.id===userId);
+  var u=USERS_LIST.find(function(x){return x.id===userId;});
   if(!u)return;
-  // Simple prompt-based for now
-  toast('Permission editing — click the role dropdown to change role and permissions','');
+  
+  var perms=u.permissions||{};
+  var permKeys=['stockEntry','stockBalance','customers','suppliers','followup','ledger','reports','staffReport','purchase','users','alertsSettings','monthlyEmail','seePrices'];
+  var permLabels=['Stock Entry','Stock Balance','Customers','Suppliers','Follow-up','Transaction Log','Reports','Staff Report','Purchase Enquiry','Manage Users','Alert Settings','Monthly Email','See Prices'];
+  
+  // Remove existing modal
+  var existing=document.getElementById('user-edit-modal');
+  if(existing)existing.remove();
+  
+  // Create modal via DOM
+  var overlay=document.createElement('div');
+  overlay.id='user-edit-modal';
+  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;padding:24px;width:480px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)';
+  
+  // Title
+  var title=document.createElement('div');
+  title.style.cssText='font-size:16px;font-weight:700;margin-bottom:16px';
+  title.textContent='Edit: '+u.name;
+  box.appendChild(title);
+  
+  // Role select
+  var roleLabel=document.createElement('div');
+  roleLabel.style.cssText='font-size:12px;font-weight:600;color:#6B7280;margin-bottom:4px';
+  roleLabel.textContent='ROLE';
+  box.appendChild(roleLabel);
+  
+  var roleSelect=document.createElement('select');
+  roleSelect.id='ep-role';
+  roleSelect.style.cssText='width:100%;padding:8px;border-radius:6px;border:1px solid #D1D5DB;margin-bottom:16px';
+  [['coordinator','🏢 Office Coordinator'],['field','🚗 Field Officer'],['admin','👑 Admin']].forEach(function(opt){
+    var o=document.createElement('option');
+    o.value=opt[0]; o.textContent=opt[1];
+    if(u.role===opt[0])o.selected=true;
+    roleSelect.appendChild(o);
+  });
+  box.appendChild(roleSelect);
+  
+  // Permissions
+  var permLabel=document.createElement('div');
+  permLabel.style.cssText='font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px';
+  permLabel.textContent='PERMISSIONS';
+  box.appendChild(permLabel);
+  
+  var permGrid=document.createElement('div');
+  permGrid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:16px';
+  permKeys.forEach(function(k,i){
+    var lbl=document.createElement('label');
+    lbl.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;cursor:pointer';
+    var cb=document.createElement('input');
+    cb.type='checkbox'; cb.id='ep-'+k;
+    if(perms[k])cb.checked=true;
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(permLabels[i]));
+    permGrid.appendChild(lbl);
+  });
+  box.appendChild(permGrid);
+  
+  // Buttons
+  var btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+  
+  var cancelBtn=document.createElement('button');
+  cancelBtn.textContent='Cancel';
+  cancelBtn.style.cssText='padding:8px 16px;border-radius:6px;border:1px solid #D1D5DB;background:#fff;cursor:pointer';
+  cancelBtn.onclick=function(){overlay.remove();};
+  btnRow.appendChild(cancelBtn);
+  
+  var saveBtn=document.createElement('button');
+  saveBtn.textContent='💾 Save Changes';
+  saveBtn.style.cssText='padding:8px 16px;border-radius:6px;background:#BF1B2C;color:#fff;border:none;cursor:pointer;font-weight:600';
+  saveBtn.onclick=function(){saveUserPerms(userId);};
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
+  
+  overlay.appendChild(box);
+  // Close on overlay click
+  overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
+  document.body.appendChild(overlay);
+}
+
+function saveUserPerms(userId){
+  var role=document.getElementById('ep-role').value;
+  var permKeys=['stockEntry','stockBalance','customers','suppliers','followup','ledger','reports','staffReport','purchase','users','alertsSettings','monthlyEmail','seePrices'];
+  var perms={};
+  permKeys.forEach(function(k){ perms[k]=document.getElementById('ep-'+k).checked; });
+  
+  sb.from('user_roles').update({role:role}).eq('id',userId).then(function(r){
+    if(r.error){ toast('Error: '+r.error.message,'error'); return; }
+    // Update local
+    var u=USERS_LIST.find(x=>x.id===userId);
+    if(u){ u.role=role; u.permissions=perms; }
+    // Close modal
+    document.querySelector('div[style*="position:fixed"][style*="z-index:9999"]').remove();
+    renderUserList();
+    toast('User updated successfully','success');
+  });
+}
+
+function deleteUser(userId){
+  var u=USERS_LIST.find(x=>x.id===userId);
+  if(!u)return;
+  if(!confirm('Delete user '+u.name+'? This cannot be undone.'))return;
+  
+  sb.auth.admin.deleteUser(userId).then(function(r){
+    if(r.error){
+      // Try just removing from user_roles
+      sb.from('user_roles').delete().eq('id',userId).then(function(r2){
+        if(r2.error){ toast('Error: '+r2.error.message,'error'); return; }
+        USERS_LIST=USERS_LIST.filter(function(x){ return x.id!==userId; });
+        renderUserList();
+        toast('User removed','success');
+      });
+      return;
+    }
+    USERS_LIST=USERS_LIST.filter(function(x){ return x.id!==userId; });
+    renderUserList();
+    toast('User deleted','success');
+  });
 }
 
 function updateStaffDropdowns(){
