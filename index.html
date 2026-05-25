@@ -4497,10 +4497,25 @@ async function addUser(){
   const perms={...ROLE_DEFAULTS[role]};
   Object.keys(PERM_LABELS).forEach(k=>{const el=document.getElementById('np-'+k);if(el&&!el.disabled)perms[k]=el.checked;});
   const {data,error}=await sb.auth.signUp({email,password:pass,options:{data:{name,role}}});
-  if(error){err.textContent='Error: '+error.message;return;}
+  if(error){
+    // If already registered, try to reactivate by finding existing auth user
+    if(error.message.includes('already registered')||error.message.includes('already been registered')){
+      // Find in user_roles and reactivate
+      var existRes=await sb.from('user_roles').select('id').eq('email',email).single();
+      if(existRes.data&&existRes.data.id){
+        await sb.from('user_roles').update({role:role,name:name}).eq('email',email);
+        toast(name+' reactivated successfully!','success');
+        document.getElementById('nu-name').value='';
+        document.getElementById('nu-email').value='';
+        await loadUsers();renderUserList();
+        return;
+      }
+    }
+    err.textContent='Error: '+error.message;return;
+  }
   const userId=data?.user?.id;
   if(userId)await sb.from('user_roles').upsert({id:userId,email,name,role});
-  toast(`✓ ${name} added!`,'success');
+  toast(name+' added!','success');
   document.getElementById('nu-name').value='';document.getElementById('nu-email').value='';document.getElementById('nu-pass').value='';
   await loadUsers(); renderUserList();
 }
@@ -4660,15 +4675,22 @@ function saveUserPerms(userId){
 function deleteUser(userId){
   var u=USERS_LIST.find(function(x){return x.id===userId;});
   if(!u)return;
-  if(!confirm('Delete user ' + u.name + '? To re-create with same email, you must also delete from Supabase Auth.'))return;
   
-  sb.from('user_roles').delete().eq('id',userId).then(function(r){
+  // Show options - deactivate keeps auth account, hard delete requires SQL
+  var choice=confirm(
+    'OPTIONS for ' + u.name + ':\n\n' +
+    'OK = Deactivate (user cannot login, email can be reused)\n' +
+    'Cancel = Do nothing\n\n' +
+    'Note: To fully delete auth account, use Supabase SQL Editor.'
+  );
+  if(!choice)return;
+  
+  // Deactivate: update role to "inactive" in user_roles
+  sb.from('user_roles').update({role:'inactive',name:u.name+' (deactivated)'}).eq('id',userId).then(function(r){
     if(r.error){ toast('Error: '+r.error.message,'error'); return; }
     USERS_LIST=USERS_LIST.filter(function(x){return x.id!==userId;});
     renderUserList();
-    toast('User removed. Run in Supabase SQL: DELETE FROM auth.users WHERE id = ' + userId,'');
-    console.log('To fully delete, run in Supabase SQL Editor:');
-    console.log('DELETE FROM auth.users WHERE id = ' + JSON.stringify(userId) + ';');
+    toast('User deactivated. They can no longer login.','success');
   });
 }
 
