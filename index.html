@@ -2241,6 +2241,15 @@ function searchProduct(){
 
 function showProductFull(p, el){
   if(!el)return;
+  // If transactions not loaded, load them first then re-render
+  if(TRANSACTIONS.length===0){
+    var loadingMsg=el.querySelector('.card:last-child');
+    if(loadingMsg)loadingMsg.innerHTML='<div class="card-body"><div class="loading">Loading customer history...</div></div>';
+    loadTxns().then(function(){
+      showProductFull(p,el);
+    });
+    return;
+  }
   var b=typeof BALANCE!=='undefined'?(BALANCE[p.c]||0):p.q;
   var tIn=TRANSACTIONS.reduce(function(s,t){
     if(t.type!=='IN')return s;
@@ -4684,7 +4693,15 @@ function switchPage(p){
   // Page-specific render
   if(p==='dashboard')renderDashboard();
   else if(p==='stock-balance')renderStock();
-  else if(p==='stock-entry')renderPicker();
+  else if(p==='stock-entry'){
+    renderPicker();
+    // Load transactions for customer history if not loaded yet
+    if(TRANSACTIONS.length===0){
+      loadTxns().then(function(){
+        console.log('Transactions loaded for product search:',TRANSACTIONS.length);
+      });
+    }
+  }
   else if(p==='customers')renderCustomers();
   else if(p==='suppliers')renderSuppliers();
   else if(p==='followup')renderFollowup();
