@@ -2283,17 +2283,22 @@ function showProductFull(p, el){
     return false;
   }
   var custMap={};
+  console.log('[DEBUG] showProductFull: p.c='+p.c+' TRANSACTIONS='+TRANSACTIONS.length);
+  var matchCount=0;
   TRANSACTIONS.forEach(function(t){
     if(t.type!=='OUT')return;
     (t.items||[]).forEach(function(it){
       if(!prodCodeMatch(it.code,it.desc,p.c,p.d))return;
+      matchCount++;
       if(!custMap[t.party])custMap[t.party]={name:t.party,totalQty:0,orders:0,lastDate:t.date,lastRef:t.ref};
       custMap[t.party].totalQty+=Number(it.qty)||0;
       custMap[t.party].orders++;
       if(t.date>custMap[t.party].lastDate){custMap[t.party].lastDate=t.date;custMap[t.party].lastRef=t.ref;}
     });
   });
+  console.log('[DEBUG] custMap matches='+matchCount+' parties='+Object.keys(custMap).length);
   var custs=Object.values(custMap).sort(function(a,b2){return b2.totalQty-a.totalQty;});
+  console.log('[DEBUG] custs[0]='+JSON.stringify(custs[0]));
 
   el.innerHTML='';
 
