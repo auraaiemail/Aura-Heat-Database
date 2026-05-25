@@ -2345,16 +2345,31 @@ function openProdModal(code){
   const lastSale=getLastSaleDate(code);
   const isIdle=daysSale>=(idleMonths*30)&&b>0;
 
+  // Code matching - handles NHA/HSA prefix variants and case differences
+  function codeMatch(txnCode, searchCode){
+    if(!txnCode||!searchCode)return false;
+    var a=txnCode.toString().toLowerCase().trim();
+    var b=searchCode.toString().toLowerCase().trim();
+    if(a===b)return true;
+    // Strip NHA/HSA/AI prefix from both
+    var prefixes=['nha','hsa','hya','nna','hla','ho','ai'];
+    for(var pi=0;pi<prefixes.length;pi++){
+      if(a.startsWith(prefixes[pi]))a=a.slice(prefixes[pi].length);
+      if(b.startsWith(prefixes[pi]))b=b.slice(prefixes[pi].length);
+    }
+    return a===b;
+  }
+
   // Get all transactions for this product
-  const txnHistory=TRANSACTIONS.filter(t=>(t.items||[]).find(it=>it.code===code)).slice(0,20);
+  const txnHistory=TRANSACTIONS.filter(t=>(t.items||[]).find(it=>codeMatch(it.code,code))).slice(0,20);
 
   // Get customers who bought this product
   const custHistory={};
   TRANSACTIONS.filter(t=>t.type==='OUT').forEach(t=>{
-    const item=(t.items||[]).find(it=>it.code===code);
+    const item=(t.items||[]).find(it=>codeMatch(it.code,code));
     if(item){
       if(!custHistory[t.party])custHistory[t.party]={name:t.party,qty:0,lastDate:t.date};
-      custHistory[t.party].qty+=item.qty;
+      custHistory[t.party].qty+=Number(item.qty)||0;
       if(t.date>custHistory[t.party].lastDate)custHistory[t.party].lastDate=t.date;
     }
   });
