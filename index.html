@@ -2339,7 +2339,7 @@ function showProductFull(p, el){
       '<th style="padding:7px 8px;text-align:left">CUSTOMER</th>'+
       '<th style="padding:7px 8px;text-align:center">ORDERS</th>'+
       '<th style="padding:7px 8px;text-align:right">TOTAL QTY</th>'+
-      '<th style="padding:7px 8px;text-align:right">LAST DATE</th>'+
+      '<th style="padding:7px 8px;text-align:right;white-space:nowrap;min-width:90px">LAST DATE</th>'+
       '</tr></thead><tbody id="cust-hist-tbody"></tbody></table>';
   } else {
     custBody+='<div style="text-align:center;padding:30px;color:#6B7280"><div style="font-size:32px;margin-bottom:8px">📭</div>No sales history yet</div>';
@@ -2361,7 +2361,7 @@ function showProductFull(p, el){
       tr.innerHTML='<td style="padding:8px;font-size:12px;font-weight:600;color:#BF1B2C">'+c.name+'</td>'+
         '<td style="padding:8px;text-align:center;font-size:12px">'+c.orders+'</td>'+
         '<td style="padding:8px;text-align:right;font-weight:700;font-size:14px">'+c.totalQty+'</td>'+
-        '<td style="padding:8px;text-align:right;font-size:11px;color:#6B7280">'+c.lastDate+'</td>';
+        '<td style="padding:8px;text-align:right;font-size:11px;color:#6B7280;white-space:nowrap">'+c.lastDate+'</td>';
       tbody.appendChild(tr);
     });
   }
