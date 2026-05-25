@@ -965,7 +965,7 @@ async function loadUserProfile(user){
     curRole = ADMIN_EMAILS.includes(user.email) ? 'admin' : 'coordinator';
     curName = user.email.split('@')[0];
     curPerms = {...ROLE_DEFAULTS[curRole]};
-    await sb.from('user_roles').upsert({id:user.id,email:user.email,name:curName,role:curRole,permissions:curPerms});
+    await sb.from('user_roles').upsert({id:user.id,email:user.email,name:curName,role:curRole,permissions:curPerms}).then(function(r){if(r.error)console.warn('user_roles upsert:',r.error.message,r.error.details);});
   } else {
     curRole = data.role||'coordinator';
     curName = data.name||user.email.split('@')[0];
@@ -1107,19 +1107,19 @@ async function loadCustomersDB(){
     // Start with embedded customers as base
     var base=CUSTOMERS.map(c => migrateOldCustomer(c));
     
-    // Load updated values from customers table (individual records saved via saveCustomer)
-    const {data:custRows}=await sb.from('customers').select('id,data,updated_at');
+    // Load updated values from customers table (real columns - no data blob)
+    const {data:custRows,error:custErr}=await sb.from('customers').select('*');
+    if(custErr){console.warn('customers load error:',custErr.message);}
     if(custRows&&custRows.length>0){
       console.log('Merging',custRows.length,'updated customers from customers table');
       custRows.forEach(function(row){
         var idx=base.findIndex(function(c){return c.id===row.id;});
         if(idx>=0){
-          // Merge: overlay Supabase values onto embedded customer
-          if(row.data&&typeof row.data==='object') base[idx]=Object.assign({},base[idx],row.data);
-          base[idx].outstanding=row.outstanding||0;
-          base[idx].priority=row.priority||base[idx].priority;
-        } else if(row.data){
-          base.push(row.data);
+          // Merge all actual columns from Supabase
+          Object.assign(base[idx], row);
+        } else {
+          // New customer added directly to Supabase
+          base.push(migrateOldCustomer(row));
         }
       });
     }
