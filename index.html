@@ -4658,24 +4658,17 @@ function saveUserPerms(userId){
 }
 
 function deleteUser(userId){
-  var u=USERS_LIST.find(x=>x.id===userId);
+  var u=USERS_LIST.find(function(x){return x.id===userId;});
   if(!u)return;
-  if(!confirm('Delete user '+u.name+'? This cannot be undone.'))return;
+  if(!confirm('Delete user ' + u.name + '? To re-create with same email, you must also delete from Supabase Auth.'))return;
   
-  sb.auth.admin.deleteUser(userId).then(function(r){
-    if(r.error){
-      // Try just removing from user_roles
-      sb.from('user_roles').delete().eq('id',userId).then(function(r2){
-        if(r2.error){ toast('Error: '+r2.error.message,'error'); return; }
-        USERS_LIST=USERS_LIST.filter(function(x){ return x.id!==userId; });
-        renderUserList();
-        toast('User removed','success');
-      });
-      return;
-    }
-    USERS_LIST=USERS_LIST.filter(function(x){ return x.id!==userId; });
+  sb.from('user_roles').delete().eq('id',userId).then(function(r){
+    if(r.error){ toast('Error: '+r.error.message,'error'); return; }
+    USERS_LIST=USERS_LIST.filter(function(x){return x.id!==userId;});
     renderUserList();
-    toast('User deleted','success');
+    toast('User removed. Run in Supabase SQL: DELETE FROM auth.users WHERE id = ' + userId,'');
+    console.log('To fully delete, run in Supabase SQL Editor:');
+    console.log('DELETE FROM auth.users WHERE id = ' + JSON.stringify(userId) + ';');
   });
 }
 
