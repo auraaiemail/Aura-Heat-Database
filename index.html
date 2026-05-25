@@ -4551,6 +4551,10 @@ async function editUserPerms(userId){
   var perms=u.permissions||{};
   var permKeys=['stockEntry','stockBalance','customers','suppliers','followup','ledger','reports','staffReport','purchase','users','alertsSettings','monthlyEmail','seePrices'];
   var permLabels=['Stock Entry','Stock Balance','Customers','Suppliers','Follow-up','Transaction Log','Reports','Staff Report','Purchase Enquiry','Manage Users','Alert Settings','Monthly Email','See Prices'];
+  // Admin has all permissions by default
+  if(u.role==='admin'){
+    permKeys.forEach(function(k){ if(perms[k]===undefined) perms[k]=true; });
+  }
   
   // Remove existing modal
   var existing=document.getElementById('user-edit-modal');
