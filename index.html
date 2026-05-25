@@ -3631,7 +3631,16 @@ function renderLedger(){
 
   var allItems=[];
 
-  TRANSACTIONS.forEach(function(t){
+  // Role-based filter - non-admins see only their transactions
+  var myTxns=TRANSACTIONS;
+  if(curRole!=='admin'&&curRole!=='manager'){
+    myTxns=TRANSACTIONS.filter(function(t){
+      return (t.user||'').toLowerCase()===(curName||'').toLowerCase()||
+             (t.remarks==='Imported from Vyappar'); // show historical
+    });
+  }
+  
+  myTxns.forEach(function(t){
     if(typeFilter==='payment') return;
     if(typeFilter==='IN'&&t.type!=='IN') return;
     if(typeFilter==='OUT'&&t.type!=='OUT') return;
@@ -4783,17 +4792,35 @@ function dlStock(){
 }
 function dlLedger(){
   const r=[['Date','Invoice','Party','By','Type','Bill','Code','Description','Qty','Remarks']];
-  TRANSACTIONS.forEach(t=>(t.items||[]).forEach(it=>r.push([t.date,t.ref,t.party,t.user||'',t.type,t.billtype||'',it.code,it.desc,it.qty,t.remarks||''])));
+  // Filter by user for non-admins
+  var txns=TRANSACTIONS;
+  if(curRole!=='admin'&&curRole!=='manager'){
+    txns=TRANSACTIONS.filter(function(t){return (t.user||'').toLowerCase()===(curName||'').toLowerCase();});
+  }
+  txns.forEach(t=>(t.items||[]).forEach(it=>r.push([t.date,t.ref,t.party,t.user||'',t.type,t.billtype||'',it.code,it.desc,it.qty,t.remarks||''])));
   csv(r,`aura_ledger_${today()}.csv`);
 }
 function dlCustomers(){
   const r=[['Name','Type','Phone','Email','City','State','Business','Orders','Value','Outstanding','Last Order','Priority','Assigned To','GST Type']];
-  CUSTOMERS_DB.forEach(c=>r.push([c.name,c.type||'customer',c.primary_phone||'',c.primary_email||'',c.primary_city||'',c.primary_state||'',c.business_type||'',c.orders||0,c.total_value||0,c.outstanding||0,c.last_order||'',c.priority||'',c.assigned_name||'',c.gst_type||'']));
+  // Field officers see only their assigned customers
+  var custs=CUSTOMERS_DB;
+  if(curRole==='field'){
+    custs=CUSTOMERS_DB.filter(function(c){
+      return (c.assigned_staff_name||'').toLowerCase()===(curName||'').toLowerCase();
+    });
+  }
+  custs.forEach(c=>r.push([c.name,c.type||'customer',c.primary_phone||'',c.primary_email||'',c.primary_city||'',c.primary_state||'',c.business_type||'',c.orders||0,c.total_value||0,c.outstanding||0,c.last_order||'',c.priority||'',c.assigned_name||'',c.gst_type||'']));
   csv(r,`aura_customers_${today()}.csv`);
 }
 function dlPaymentDue(){
   const r=[['Name','Phone','Outstanding','Last Order','Priority','Assigned To']];
-  CUSTOMERS_DB.filter(c=>(c.outstanding||0)>0).sort((a,b)=>b.outstanding-a.outstanding).forEach(c=>r.push([c.name,c.primary_phone||'',c.outstanding||0,c.last_order||'',c.priority||'',c.assigned_name||'']));
+  var custs=CUSTOMERS_DB;
+  if(curRole==='field'){
+    custs=CUSTOMERS_DB.filter(function(c){
+      return (c.assigned_staff_name||'').toLowerCase()===(curName||'').toLowerCase();
+    });
+  }
+  custs.filter(c=>(c.outstanding||0)>0).sort((a,b)=>b.outstanding-a.outstanding).forEach(c=>r.push([c.name,c.primary_phone||'',c.outstanding||0,c.last_order||'',c.priority||'',c.assigned_name||'']));
   csv(r,`aura_payment_due_${today()}.csv`);
 }
 function dlIdleProducts(){
