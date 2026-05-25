@@ -960,7 +960,7 @@ async function doLogin(){
 }
 
 async function loadUserProfile(user){
-  const {data} = await sb.from('user_roles').select('*').eq('id',user.id).single();
+  const {data} = await sb.from('user_roles').select('*').eq('id',user.id).maybeSingle();
   if(!data){
     curRole = ADMIN_EMAILS.includes(user.email) ? 'admin' : 'coordinator';
     curName = user.email.split('@')[0];
@@ -1108,7 +1108,7 @@ async function loadCustomersDB(){
     var base=CUSTOMERS.map(c => migrateOldCustomer(c));
     
     // Load updated values from customers table (individual records saved via saveCustomer)
-    const {data:custRows}=await sb.from('customers').select('id,name,outstanding,priority,data,updated_at');
+    const {data:custRows}=await sb.from('customers').select('id,data,updated_at');
     if(custRows&&custRows.length>0){
       console.log('Merging',custRows.length,'updated customers from customers table');
       custRows.forEach(function(row){
@@ -1229,7 +1229,10 @@ async function saveTxn(t){
   return true;
 }
 
+var rtSubscribed=false;
 function subscribeRT(){
+  if(rtSubscribed)return;
+  rtSubscribed=true;
   sb.channel('rt-txn')
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'transactions'},p=>{
       const t=p.new.data;
