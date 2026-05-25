@@ -1056,8 +1056,21 @@ async function initApp(){
 
 async function loadTxns(){
   try{
-    const {data} = await sb.from('transactions').select('data').order('created_at',{ascending:false});
-    TRANSACTIONS = (data||[]).map(r=>r.data).filter(Boolean);
+    // Fetch ALL transactions - Supabase default limit is 1000, use range to get all
+    var allData=[];
+    var pageSize=1000;
+    var page=0;
+    while(true){
+      var from=page*pageSize;
+      var to=from+pageSize-1;
+      var res=await sb.from('transactions').select('data').order('created_at',{ascending:false}).range(from,to);
+      var rows=res.data||[];
+      allData=allData.concat(rows.map(function(r){return r.data;}).filter(Boolean));
+      if(rows.length<pageSize)break; // Last page
+      page++;
+    }
+    TRANSACTIONS=allData;
+    console.log('Loaded all transactions:',TRANSACTIONS.length);
     recalcBal(); checkAlerts(); renderDashboard();
   }catch(e){console.error('loadTxns',e);}
 }
