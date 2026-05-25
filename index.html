@@ -2345,28 +2345,65 @@ function openProdModal(code){
   const lastSale=getLastSaleDate(code);
   const isIdle=daysSale>=(idleMonths*30)&&b>0;
 
-  // Code matching - handles NHA/HSA prefix variants and case differences
-  function codeMatch(txnCode, searchCode){
-    if(!txnCode||!searchCode)return false;
-    var a=txnCode.toString().toLowerCase().trim();
-    var b=searchCode.toString().toLowerCase().trim();
-    if(a===b)return true;
-    // Strip NHA/HSA/AI prefix from both
-    var prefixes=['nha','hsa','hya','nna','hla','ho','ai'];
-    for(var pi=0;pi<prefixes.length;pi++){
-      if(a.startsWith(prefixes[pi]))a=a.slice(prefixes[pi].length);
-      if(b.startsWith(prefixes[pi]))b=b.slice(prefixes[pi].length);
-    }
-    return a===b;
+  // Smart item matching - handles code match AND description-based spec matching
+  var prodDesc=(p?p.d:'').toLowerCase();
+  
+  // Extract specs from description for matching
+  function extractSpecs(desc){
+    var d=(desc||'').toUpperCase();
+    var hl=d.match(/HL[:\s-]*(\d+)/); 
+    var ol=d.match(/OL[:\s-]*(\d+)/);
+    var wv=d.match(/(\d+)W[/\s]*(\d+)V/);
+    return {
+      hl:hl?hl[1]:null, ol:ol?ol[1]:null,
+      w:wv?wv[1]:null, v:wv?wv[2]:null
+    };
   }
-
+  
+  var prodSpecs=extractSpecs(prodDesc);
+  var hasSpecs=prodSpecs.hl&&prodSpecs.ol&&prodSpecs.w&&prodSpecs.v;
+  
+  function itemMatch(it){
+    if(!it)return false;
+    var itCode=(it.code||'').toLowerCase().trim();
+    var searchCode=code.toLowerCase().trim();
+    
+    // 1. Exact code match
+    if(itCode===searchCode)return true;
+    
+    // 2. Strip NHA/HSA/AI prefix match
+    var prefixes=['nha','hsa','hya','nna','hla','ho','ai'];
+    var itStripped=itCode, searchStripped=searchCode;
+    prefixes.forEach(function(px){
+      if(itStripped.startsWith(px))itStripped=itStripped.slice(px.length);
+      if(searchStripped.startsWith(px))searchStripped=searchStripped.slice(px.length);
+    });
+    if(itStripped===searchStripped&&itStripped.length>5)return true;
+    
+    // 3. Description spec match (HL+OL+Wattage+Voltage)
+    if(hasSpecs&&it.desc){
+      var itSpecs=extractSpecs(it.desc);
+      if(itSpecs.hl&&itSpecs.ol&&itSpecs.w&&itSpecs.v){
+        return itSpecs.hl===prodSpecs.hl && 
+               itSpecs.ol===prodSpecs.ol && 
+               itSpecs.w===prodSpecs.w && 
+               itSpecs.v===prodSpecs.v;
+      }
+    }
+    
+    // 4. Description contains product code
+    if(it.desc&&it.desc.toLowerCase().includes(searchCode))return true;
+    
+    return false;
+  }
+  
   // Get all transactions for this product
-  const txnHistory=TRANSACTIONS.filter(t=>(t.items||[]).find(it=>codeMatch(it.code,code))).slice(0,20);
+  const txnHistory=TRANSACTIONS.filter(t=>(t.items||[]).find(it=>itemMatch(it))).slice(0,20);
 
   // Get customers who bought this product
   const custHistory={};
   TRANSACTIONS.filter(t=>t.type==='OUT').forEach(t=>{
-    const item=(t.items||[]).find(it=>codeMatch(it.code,code));
+    const item=(t.items||[]).find(it=>itemMatch(it));
     if(item){
       if(!custHistory[t.party])custHistory[t.party]={name:t.party,qty:0,lastDate:t.date};
       custHistory[t.party].qty+=Number(item.qty)||0;
