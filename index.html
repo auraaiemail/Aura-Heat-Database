@@ -4630,10 +4630,11 @@ function saveUserPerms(userId){
   sb.from('user_roles').update({role:role}).eq('id',userId).then(function(r){
     if(r.error){ toast('Error: '+r.error.message,'error'); return; }
     // Update local
-    var u=USERS_LIST.find(x=>x.id===userId);
+    var u=USERS_LIST.find(function(x){return x.id===userId;});
     if(u){ u.role=role; u.permissions=perms; }
-    // Close modal
-    document.querySelector('div[style*="position:fixed"][style*="z-index:9999"]').remove();
+    // Close modal safely
+    var modal=document.getElementById('user-edit-modal');
+    if(modal)modal.remove();
     renderUserList();
     toast('User updated successfully','success');
   });
