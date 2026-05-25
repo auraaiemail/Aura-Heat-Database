@@ -4587,23 +4587,47 @@ async function editUserPerms(userId){
   });
   box.appendChild(roleSelect);
   
-  // Permissions
+  // Permissions label
   var permLabel=document.createElement('div');
-  permLabel.style.cssText='font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px';
+  permLabel.style.cssText='font-size:11px;font-weight:700;color:var(--red,#BF1B2C);text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px';
   permLabel.textContent='PERMISSIONS';
   box.appendChild(permLabel);
   
+  // Permissions toggles - same style as Add Staff form
   var permGrid=document.createElement('div');
-  permGrid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:16px';
+  permGrid.style.cssText='margin-bottom:16px';
   permKeys.forEach(function(k,i){
-    var lbl=document.createElement('label');
-    lbl.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;cursor:pointer';
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#FAFAFA;border-radius:6px;margin-bottom:5px';
+    
+    var lbl=document.createElement('div');
+    lbl.style.cssText='font-size:12px;font-weight:500';
+    lbl.textContent=permLabels[i];
+    row.appendChild(lbl);
+    
+    // Toggle switch
+    var wrap=document.createElement('label');
+    wrap.style.cssText='position:relative;width:38px;height:20px;flex-shrink:0';
+    
     var cb=document.createElement('input');
-    cb.type='checkbox'; cb.id='ep-'+k;
+    cb.type='checkbox';
+    cb.id='ep-'+k;
+    cb.style.cssText='opacity:0;width:0;height:0';
     if(perms[k])cb.checked=true;
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(permLabels[i]));
-    permGrid.appendChild(lbl);
+    wrap.appendChild(cb);
+    
+    var slider=document.createElement('span');
+    slider.id='ep-'+k+'-slider';
+    slider.style.cssText='position:absolute;cursor:pointer;inset:0;background:'+(perms[k]?'var(--green,#22c55e)':'#ccc')+';border-radius:20px;transition:0.3s';
+    slider.onclick=function(sliderEl,cbEl){
+      return function(){
+        cbEl.checked=!cbEl.checked;
+        sliderEl.style.background=cbEl.checked?'var(--green,#22c55e)':'#ccc';
+      };
+    }(slider,cb);
+    wrap.appendChild(slider);
+    row.appendChild(wrap);
+    permGrid.appendChild(row);
   });
   box.appendChild(permGrid);
   
