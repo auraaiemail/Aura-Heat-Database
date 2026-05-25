@@ -4547,20 +4547,15 @@ async function changeUserRole(userId,newRole){
 async function editUserPerms(userId){
   var u=USERS_LIST.find(function(x){return x.id===userId;});
   if(!u)return;
-  
   var perms=u.permissions||{};
   var permKeys=['stockEntry','stockBalance','customers','suppliers','followup','ledger','reports','staffReport','purchase','users','alertsSettings','monthlyEmail','seePrices'];
   var permLabels=['Stock Entry','Stock Balance','Customers','Suppliers','Follow-up','Transaction Log','Reports','Staff Report','Purchase Enquiry','Manage Users','Alert Settings','Monthly Email','See Prices'];
-  // Admin has all permissions by default
-  if(u.role==='admin'){
-    permKeys.forEach(function(k){ if(perms[k]===undefined) perms[k]=true; });
-  }
+  // Admin gets all ON by default
+  if(u.role==='admin'){ permKeys.forEach(function(k){ if(perms[k]===undefined) perms[k]=true; }); }
   
-  // Remove existing modal
   var existing=document.getElementById('user-edit-modal');
   if(existing)existing.remove();
   
-  // Create modal via DOM
   var overlay=document.createElement('div');
   overlay.id='user-edit-modal';
   overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
@@ -4579,7 +4574,6 @@ async function editUserPerms(userId){
   roleLabel.style.cssText='font-size:12px;font-weight:600;color:#6B7280;margin-bottom:4px';
   roleLabel.textContent='ROLE';
   box.appendChild(roleLabel);
-  
   var roleSelect=document.createElement('select');
   roleSelect.id='ep-role';
   roleSelect.style.cssText='width:100%;padding:8px;border-radius:6px;border:1px solid #D1D5DB;margin-bottom:16px';
@@ -4593,44 +4587,33 @@ async function editUserPerms(userId){
   
   // Permissions label
   var permLabel=document.createElement('div');
-  permLabel.style.cssText='font-size:11px;font-weight:700;color:var(--red,#BF1B2C);text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px';
+  permLabel.style.cssText='font-size:11px;font-weight:700;color:#BF1B2C;text-transform:uppercase;letter-spacing:0.5px;margin:4px 0 8px';
   permLabel.textContent='PERMISSIONS';
   box.appendChild(permLabel);
   
-  // Permissions toggles - same style as Add Staff form
+  // Permission toggles - using div with data-on (no checkbox/label conflict)
   var permGrid=document.createElement('div');
   permGrid.style.cssText='margin-bottom:16px';
   permKeys.forEach(function(k,i){
+    var isOn=perms[k]?true:false;
     var row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#FAFAFA;border-radius:6px;margin-bottom:5px';
-    
     var lbl=document.createElement('div');
     lbl.style.cssText='font-size:12px;font-weight:500';
     lbl.textContent=permLabels[i];
     row.appendChild(lbl);
-    
-    // Toggle switch
-    var wrap=document.createElement('label');
-    wrap.style.cssText='position:relative;width:38px;height:20px;flex-shrink:0';
-    
-    var cb=document.createElement('input');
-    cb.type='checkbox';
-    cb.id='ep-'+k;
-    cb.style.cssText='opacity:0;width:0;height:0';
-    if(perms[k])cb.checked=true;
-    wrap.appendChild(cb);
-    
-    var slider=document.createElement('span');
-    slider.id='ep-'+k+'-slider';
-    slider.style.cssText='position:absolute;cursor:pointer;inset:0;background:'+(perms[k]?'var(--green,#22c55e)':'#ccc')+';border-radius:20px;transition:0.3s';
-    (function(s,c){
-      s.onclick=function(){
-        c.checked=!c.checked;
-        s.style.background=c.checked?'var(--green,#22c55e)':'#ccc';
-      };
-    })(slider,cb);
-    wrap.appendChild(slider);
-    row.appendChild(wrap);
+    // Simple toggle div - no checkbox issues
+    var toggle=document.createElement('div');
+    toggle.id='ep-'+k+'-slider';
+    toggle.dataset.on=isOn?'1':'0';
+    toggle.style.cssText='width:38px;height:20px;border-radius:20px;cursor:pointer;transition:background 0.3s;background:'+(isOn?'#22c55e':'#ccc')+';flex-shrink:0';
+    toggle.addEventListener('mousedown',function(e){
+      e.preventDefault();
+      var on=this.dataset.on==='1';
+      this.dataset.on=on?'0':'1';
+      this.style.background=on?'#ccc':'#22c55e';
+    });
+    row.appendChild(toggle);
     permGrid.appendChild(row);
   });
   box.appendChild(permGrid);
@@ -4638,13 +4621,11 @@ async function editUserPerms(userId){
   // Buttons
   var btnRow=document.createElement('div');
   btnRow.style.cssText='display:flex;gap:8px;justify-content:flex-end';
-  
   var cancelBtn=document.createElement('button');
   cancelBtn.textContent='Cancel';
   cancelBtn.style.cssText='padding:8px 16px;border-radius:6px;border:1px solid #D1D5DB;background:#fff;cursor:pointer';
   cancelBtn.onclick=function(){overlay.remove();};
   btnRow.appendChild(cancelBtn);
-  
   var saveBtn=document.createElement('button');
   saveBtn.textContent='💾 Save Changes';
   saveBtn.style.cssText='padding:8px 16px;border-radius:6px;background:#BF1B2C;color:#fff;border:none;cursor:pointer;font-weight:600';
@@ -4653,7 +4634,6 @@ async function editUserPerms(userId){
   box.appendChild(btnRow);
   
   overlay.appendChild(box);
-  // Close on overlay click
   overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
   document.body.appendChild(overlay);
 }
@@ -4662,14 +4642,14 @@ function saveUserPerms(userId){
   var role=document.getElementById('ep-role').value;
   var permKeys=['stockEntry','stockBalance','customers','suppliers','followup','ledger','reports','staffReport','purchase','users','alertsSettings','monthlyEmail','seePrices'];
   var perms={};
-  permKeys.forEach(function(k){ perms[k]=document.getElementById('ep-'+k).checked; });
-  
+  permKeys.forEach(function(k){
+    var s=document.getElementById('ep-'+k+'-slider');
+    perms[k]=s?s.dataset.on==='1':false;
+  });
   sb.from('user_roles').update({role:role}).eq('id',userId).then(function(r){
-    if(r.error){ toast('Error: '+r.error.message,'error'); return; }
-    // Update local
+    if(r.error){toast('Error: '+r.error.message,'error');return;}
     var u=USERS_LIST.find(function(x){return x.id===userId;});
-    if(u){ u.role=role; u.permissions=perms; }
-    // Close modal safely
+    if(u){u.role=role;u.permissions=perms;}
     var modal=document.getElementById('user-edit-modal');
     if(modal)modal.remove();
     renderUserList();
