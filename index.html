@@ -965,7 +965,7 @@ async function loadUserProfile(user){
     curRole = ADMIN_EMAILS.includes(user.email) ? 'admin' : 'coordinator';
     curName = user.email.split('@')[0];
     curPerms = {...ROLE_DEFAULTS[curRole]};
-    await sb.from('user_roles').upsert({id:user.id,email:user.email,name:curName,role:curRole,permissions:curPerms}).then(function(r){if(r.error)console.warn('user_roles upsert:',r.error.message,r.error.details);});
+    await sb.from('user_roles').upsert({id:user.id,email:user.email,name:curName,role:curRole}).then(function(r){if(r.error)console.warn('user_roles upsert:',r.error.message);});
   } else {
     curRole = data.role||'coordinator';
     curName = data.name||user.email.split('@')[0];
@@ -4386,7 +4386,7 @@ async function addUser(){
   const {data,error}=await sb.auth.signUp({email,password:pass,options:{data:{name,role}}});
   if(error){err.textContent='Error: '+error.message;return;}
   const userId=data?.user?.id;
-  if(userId)await sb.from('user_roles').upsert({id:userId,email,name,role,permissions:perms});
+  if(userId)await sb.from('user_roles').upsert({id:userId,email,name,role});
   toast(`✓ ${name} added!`,'success');
   document.getElementById('nu-name').value='';document.getElementById('nu-email').value='';document.getElementById('nu-pass').value='';
   await loadUsers(); renderUserList();
@@ -4426,7 +4426,7 @@ async function renderUserList(){
 
 async function changeUserRole(userId,newRole){
   const perms={...ROLE_DEFAULTS[newRole]};
-  await sb.from('user_roles').update({role:newRole,permissions:perms}).eq('id',userId);
+  await sb.from('user_roles').update({role:newRole}).eq('id',userId);
   await loadUsers(); renderUserList(); toast('Role updated ✓','success');
 }
 
