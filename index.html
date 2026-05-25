@@ -1126,7 +1126,7 @@ async function loadCustomersDB(){
     
     // Also check customers_data for any bulk saves
     const {data:cdRows}=await sb.from('customers_data').select('data').limit(1);
-    console.log('customers_data rows:',cdRows?.length,'error: undefined');
+    // customers_data loaded
     if(cdRows&&cdRows.length>0&&Array.isArray(cdRows[0].data)&&cdRows[0].data.length>0){
       var cdData=cdRows[0].data;
       console.log('Loaded',cdData.length,'customers from customers_data');
