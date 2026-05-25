@@ -4496,28 +4496,43 @@ async function addUser(){
   err.textContent='';
   const perms={...ROLE_DEFAULTS[role]};
   Object.keys(PERM_LABELS).forEach(k=>{const el=document.getElementById('np-'+k);if(el&&!el.disabled)perms[k]=el.checked;});
+  
+  // Try to create new user
   const {data,error}=await sb.auth.signUp({email,password:pass,options:{data:{name,role}}});
-  if(error){
-    // If already registered, try to reactivate by finding existing auth user
-    if(error.message.includes('already registered')||error.message.includes('already been registered')){
-      // Find in user_roles and reactivate
-      var existRes=await sb.from('user_roles').select('id').eq('email',email).single();
-      if(existRes.data&&existRes.data.id){
-        await sb.from('user_roles').update({role:role,name:name}).eq('email',email);
-        toast(name+' reactivated successfully!','success');
-        document.getElementById('nu-name').value='';
-        document.getElementById('nu-email').value='';
-        await loadUsers();renderUserList();
-        return;
-      }
+  
+  if(error&&(error.message.includes('already registered')||error.message.includes('already been registered'))){
+    // User exists in auth but was deleted from user_roles
+    // Sign in with their credentials to get their ID, then re-add to user_roles
+    const {data:signInData, error:signInErr}=await sb.auth.signInWithPassword({email,password:pass});
+    if(signInErr){
+      // Password may be different from old account - can't recover automatically
+      err.textContent="User exists. Run in Supabase SQL Editor: DELETE FROM auth.users WHERE email='"+email+"'; then try again.";
+      return;
     }
-    err.textContent='Error: '+error.message;return;
+    // Got their ID - add/update user_roles
+    const existingId=signInData?.user?.id;
+    if(existingId){
+      await sb.from('user_roles').upsert({id:existingId,email,name,role});
+      // Sign back in as admin
+      await sb.auth.signInWithPassword({email:curEmail,password:''});
+      toast(name+' added successfully!','success');
+      document.getElementById('nu-name').value='';
+      document.getElementById('nu-email').value='';
+      document.getElementById('nu-pass').value='';
+      await loadUsers();renderUserList();
+      return;
+    }
   }
+  
+  if(error){err.textContent='Error: '+error.message;return;}
+  
   const userId=data?.user?.id;
   if(userId)await sb.from('user_roles').upsert({id:userId,email,name,role});
   toast(name+' added!','success');
-  document.getElementById('nu-name').value='';document.getElementById('nu-email').value='';document.getElementById('nu-pass').value='';
-  await loadUsers(); renderUserList();
+  document.getElementById('nu-name').value='';
+  document.getElementById('nu-email').value='';
+  document.getElementById('nu-pass').value='';
+  await loadUsers();renderUserList();
 }
 
 async function renderUserList(){
@@ -4675,22 +4690,14 @@ function saveUserPerms(userId){
 function deleteUser(userId){
   var u=USERS_LIST.find(function(x){return x.id===userId;});
   if(!u)return;
+  if(!confirm('Remove ' + u.name + ' from the app?'))return;
   
-  // Show options - deactivate keeps auth account, hard delete requires SQL
-  var choice=confirm(
-    'OPTIONS for ' + u.name + ':\n\n' +
-    'OK = Deactivate (user cannot login, email can be reused)\n' +
-    'Cancel = Do nothing\n\n' +
-    'Note: To fully delete auth account, use Supabase SQL Editor.'
-  );
-  if(!choice)return;
-  
-  // Deactivate: update role to "inactive" in user_roles
-  sb.from('user_roles').update({role:'inactive',name:u.name+' (deactivated)'}).eq('id',userId).then(function(r){
+  // Remove from user_roles - this prevents login
+  sb.from('user_roles').delete().eq('id',userId).then(function(r){
     if(r.error){ toast('Error: '+r.error.message,'error'); return; }
     USERS_LIST=USERS_LIST.filter(function(x){return x.id!==userId;});
     renderUserList();
-    toast('User deactivated. They can no longer login.','success');
+    toast(u.name + ' removed. You can re-add them with any password.','success');
   });
 }
 
