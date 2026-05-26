@@ -2765,6 +2765,21 @@ function updateCityFilter(){
   });
   console.log('Cities for state "'+state+'":',cities.size);
 }
+
+function getCustName(c){
+  // Prefer company name over contact person name
+  if(c.companies&&c.companies.length>0&&c.companies[0].company_name){
+    return c.companies[0].company_name;
+  }
+  return c.name||'Unknown';
+}
+function getCustSubName(c){
+  // Show contact person name as subtitle if company name is shown
+  if(c.companies&&c.companies.length>0&&c.companies[0].company_name){
+    return c.name||'';
+  }
+  return '';
+}
 function renderCustomers(){
   populateCustFilters();
   const q=(document.getElementById('cust-q')?.value||'').toLowerCase();
@@ -2773,6 +2788,7 @@ function renderCustomers(){
   let list=CUSTOMERS_DB.filter(c=>c.type==='customer'||!c.type);
   if(custFilter!=='all')list=list.filter(c=>c.gst_type===custFilter);
   if(q)list=list.filter(c=>c.name.toLowerCase().includes(q)||
+    getCustName(c).toLowerCase().includes(q)||
     (c.primary_city||'').toLowerCase().includes(q)||
     (c.business_type||'').toLowerCase().includes(q));
   const el=document.getElementById('cust-list');
@@ -2798,7 +2814,7 @@ function renderCustCard(c,type='customer'){
   const ownerBadge=c.owner_group_id?'<span class="chip orange">🔗 Linked</span>':'';
   return `<div class="cust-card ${c.priority}" onclick="openCustModal('${c.id}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-      <div class="cust-name">${c.name}</div>
+      <div class="cust-name">${getCustName(c)}</div>${getCustSubName(c)?'<div style="font-size:10px;color:#6B7280;margin-top:1px">'+getCustSubName(c)+'</div>':''}
       <span style="font-size:10px;font-weight:700;color:${priColor};white-space:nowrap">${priLabel}</span>
     </div>
     <div class="cust-meta">
@@ -3200,13 +3216,20 @@ async function saveNewCust(){
   };
 
   err.textContent='';
+  // Disable save button to prevent duplicate saves
+  var saveBtn=document.querySelector('#new-cust-modal .btn-primary');
+  if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='💾 Saving...';}
+  
   const ok=await saveCustomer(cust);
   if(ok){
-    toast(`✓ ${name} added!`,'success');
+    toast('✓ '+name+' saved successfully!','success');
     logActivity('customer_added',{name,type});
     closeNewCustModal();
     renderCustomers(); renderSuppliers();
-  } else err.textContent='Failed to save. Check connection.';
+  } else {
+    err.textContent='Failed to save. Check connection.';
+    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='💾 Save '+type.charAt(0).toUpperCase()+type.slice(1);}
+  }
 }
 function closeNewCustModal(){
   document.getElementById('new-cust-modal').style.display='none';
@@ -3599,7 +3622,7 @@ function renderFollowup(){
   el.innerHTML=list.slice(0,80).map(c=>`
     <div class="cust-card ${c.priority}" onclick="openCustModal('${c.id}')">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
-        <div class="cust-name">${c.name}</div>
+        <div class="cust-name">${getCustName(c)}</div>${getCustSubName(c)?'<div style="font-size:10px;color:#6B7280;margin-top:1px">'+getCustSubName(c)+'</div>':''}
         <span style="font-size:10px;font-weight:700;color:${PRI_COLOR[c.priority]||'#aaa'};white-space:nowrap">${PRI_LABEL[c.priority]||c.priority}</span>
       </div>
       <div class="cust-meta">
@@ -3676,16 +3699,36 @@ function renderLedger(){
 
   allItems.sort(function(a,b){return (b.ts||b.date)>(a.ts||a.date)?1:-1;});
 
+  // Pagination - show 100 rows at a time for speed
+  var ledPage=window.ledPage||0;
+  var pageSize=100;
+  var totalPages=Math.ceil(allItems.length/pageSize);
+  var pagedItems=allItems.slice(ledPage*pageSize,(ledPage+1)*pageSize);
+
   var el=document.getElementById('led-body');
   if(!el)return;
   el.innerHTML='';
+
+  // Add pagination controls
+  var pagCtrl=document.getElementById('led-pagination');
+  if(!pagCtrl){
+    pagCtrl=document.createElement('div');
+    pagCtrl.id='led-pagination';
+    pagCtrl.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px';
+    el.parentElement.insertBefore(pagCtrl,el);
+  }
+  pagCtrl.innerHTML='<span style="color:#6B7280">Showing '+(ledPage*pageSize+1)+'-'+Math.min((ledPage+1)*pageSize,allItems.length)+' of '+allItems.length+'</span>'+
+    (ledPage>0?'<button class="btn btn-xs" onclick="window.ledPage='+(ledPage-1)+';renderLedger()">◀ Prev</button>':'')+
+    (ledPage<totalPages-1?'<button class="btn btn-xs" onclick="window.ledPage='+(ledPage+1)+';renderLedger()">Next ▶</button>':'');
+
+  var items=pagedItems;
 
   if(!allItems.length){
     el.innerHTML='<tr><td colspan="7" class="empty">No records found</td></tr>';
     return;
   }
 
-  allItems.forEach(function(item){
+  items.forEach(function(item){
     var tr=document.createElement('tr');
     if(item.type==='payment'){
       var p=item.data;
