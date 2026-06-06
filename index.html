@@ -1056,22 +1056,27 @@ async function initApp(){
 
 async function loadTxns(){
   try{
-    // Fetch ALL transactions - Supabase default limit is 1000, use range to get all
-    var allData=[];
-    var pageSize=1000;
-    var page=0;
-    while(true){
-      var from=page*pageSize;
-      var to=from+pageSize-1;
-      var res=await sb.from('transactions').select('data').order('created_at',{ascending:false}).range(from,to);
-      var rows=res.data||[];
-      allData=allData.concat(rows.map(function(r){return r.data;}).filter(Boolean));
-      if(rows.length<pageSize)break; // Last page
-      page++;
-    }
-    TRANSACTIONS=allData;
-    console.log('Loaded all transactions:',TRANSACTIONS.length);
+    // Load recent 500 first for fast display
+    var res=await sb.from('transactions').select('data').order('created_at',{ascending:false}).range(0,499);
+    TRANSACTIONS=(res.data||[]).map(function(r){return r.data;}).filter(Boolean);
     recalcBal(); checkAlerts(); renderDashboard();
+    
+    // Then load rest in background
+    if((res.data||[]).length===500){
+      var allData=[...TRANSACTIONS];
+      var page=1;
+      while(true){
+        var from=page*500;
+        var to=from+499;
+        var r2=await sb.from('transactions').select('data').order('created_at',{ascending:false}).range(from,to);
+        var rows=(r2.data||[]).map(function(r){return r.data;}).filter(Boolean);
+        allData=allData.concat(rows);
+        if(rows.length<500)break;
+        page++;
+      }
+      TRANSACTIONS=allData;
+      console.log('Loaded all transactions:',TRANSACTIONS.length);
+    }
   }catch(e){console.error('loadTxns',e);}
 }
 
@@ -3234,6 +3239,9 @@ async function saveNewCust(){
 function closeNewCustModal(){
   document.getElementById('new-cust-modal').style.display='none';
   _contactIdx=1; _companyIdx=1;
+  // Re-enable save button
+  var saveBtn=document.querySelector('#new-cust-modal .btn-primary');
+  if(saveBtn){saveBtn.disabled=false;}
 }
 
 function openEditCustModal(id){
@@ -3915,15 +3923,30 @@ async function deleteTxn(txnId){
   if(!confirm('Delete this transaction? Stock balance will be updated.'))return;
   const idx=TRANSACTIONS.findIndex(t=>t.id==txnId);
   if(idx===-1)return;
-  const {data:rows}=await sb.from('transactions').select('id,data');
-  const row=rows?.find(r=>r.data?.id==txnId);
-  if(row){
-    const {error}=await sb.from('transactions').delete().eq('id',row.id);
-    if(error){toast('Delete failed','error');return;}
+  
+  // Supabase row 'id' is numeric auto-increment
+  // data->>'id' is our UUID stored inside the JSON
+  // Find the numeric row ID first, then delete by that
+  const {data:rows,error:findErr}=await sb.from('transactions')
+    .select('id')
+    .eq('data->>id', String(txnId));
+  
+  if(findErr||!rows||rows.length===0){
+    console.error('Cannot find transaction row:',findErr?.message);
+    toast('Delete failed - not found in database','error');
+    return;
   }
+  
+  const {error:delErr}=await sb.from('transactions').delete().eq('id', rows[0].id);
+  if(delErr){
+    console.error('Delete error:',delErr.message);
+    toast('Delete failed: '+delErr.message,'error');
+    return;
+  }
+  
   TRANSACTIONS.splice(idx,1);
   recalcBal(); checkAlerts();
-  toast('Deleted ✓','warn');
+  toast('Transaction deleted','success');
   renderLedger(); renderStock(); renderDashboard();
 }
 
