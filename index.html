@@ -2335,7 +2335,7 @@ function showProductFull(p, el){
     });
   });
   console.log('[DEBUG] custMap matches='+matchCount+' parties='+Object.keys(custMap).length);
-  var custs=Object.values(custMap).sort(function(a,b2){return b2.totalQty-a.totalQty;});
+  var custs=Object.values(custMap).sort(function(a,b2){return (b2.lastDate||'')>(a.lastDate||'')?1:-1;});
   console.log('[DEBUG] custs[0]='+JSON.stringify(custs[0]));
 
   el.innerHTML='';
