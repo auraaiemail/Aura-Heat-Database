@@ -3677,6 +3677,14 @@ async function saveCallLog(custId){
   renderCustomers();
   renderDashboard();
 }
+function getOverdueStr(c){
+  if((c.outstanding||0)<=0) return '';
+  var ots=TRANSACTIONS.filter(function(x){return x.party===c.name&&x.type==='OUT';});
+  if(!ots.length) return '';
+  var ld=ots.sort(function(a,b){return b.date>a.date?1:-1;})[0].date;
+  var od=Math.floor((new Date()-new Date(ld))/864e5);
+  return od>0?' · '+od+'d overdue':'';
+}
 function renderFollowup(){
   const q=(document.getElementById('follow-q')?.value||'').toLowerCase();
   
@@ -3716,7 +3724,7 @@ function renderFollowup(){
         <span>💰 ₹${Math.round(c.total_value||0).toLocaleString('en-IN')}</span>
         <span>⏱ ${c.days_since||0} days ago</span>
         ${c.primary_city?`<span>📍 ${c.primary_city}${c.primary_state?', '+c.primary_state:''}</span>`:''}
-        ${(c.outstanding||0)>0?`<span style="color:var(--red);font-weight:700">⚠ ₹${c.outstanding.toLocaleString('en-IN')} due</span>`:''}
+        ${(c.outstanding||0)>0?`<span style="color:var(--red);font-weight:700">⚠ ₹${c.outstanding.toLocaleString('en-IN')} due${getOverdueStr(c)}</span>`:''}
         ${c.avg_freq?`<span>Every ${c.avg_freq}d</span>`:''}
       </div>
       ${c.assigned_name?`<div style="font-size:10px;color:var(--blue);margin-top:4px">👤 ${c.assigned_name}</div>`:''}
