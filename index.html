@@ -2880,6 +2880,16 @@ function renderSuppliers(){
 
 function renderCustCard(c,type='customer'){
   const ov=c.outstanding||0;
+  // Calculate days overdue from most recent OUT transaction
+  var overdueStr='';
+  if(ov>0){
+    var outTxns=TRANSACTIONS.filter(function(x){return x.party===c.name&&x.type==='OUT';});
+    if(outTxns.length>0){
+      var lastTxnDate=outTxns.sort(function(a,b){return b.date>a.date?1:-1;})[0].date;
+      var overdueDays=Math.floor((new Date()-new Date(lastTxnDate))/864e5);
+      if(overdueDays>0) overdueStr=' · '+overdueDays+'d overdue';
+    }
+  }
   const priLabel=PRI_LABEL[c.priority]||c.priority||'';
   const priColor=PRI_COLOR[c.priority]||'#aaa';
   const assignedBadge=c.assigned_name?`<span class="chip blue">👤 ${c.assigned_name}</span>`:'';
@@ -2896,7 +2906,7 @@ function renderCustCard(c,type='customer'){
       ${c.days_since?`<span>📅 ${c.days_since}d ago</span>`:''}
       ${c.primary_city?`<span>📍 ${c.primary_city}${c.primary_state?', '+c.primary_state:''}</span>`:''}
       ${c.business_type?`<span>🏭 ${c.business_type}</span>`:''}
-      ${ov>0?`<span style="color:var(--red);font-weight:700">⚠ ₹${ov.toLocaleString('en-IN')} due${(function(){var ct=TRANSACTIONS.filter(function(x){return x.party===c.name&&x.type==='OUT';});if(!ct.length)return '';var ld=ct.sort(function(a,b){return b.date>a.date?1:-1;})[0].date;var days=Math.floor((new Date()-new Date(ld))/864e5);return days>0?' · '+days+'d overdue':'';})()}</span>`:''}
+      ${ov>0?'<span style="color:var(--red);font-weight:700">⚠ ₹'+ov.toLocaleString('en-IN')+' due'+overdueStr+'</span>':''}
     </div>
     <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
       ${gstBadge}${assignedBadge}${ownerBadge}
