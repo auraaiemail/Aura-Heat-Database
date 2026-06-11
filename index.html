@@ -3844,10 +3844,11 @@ function renderLedger(){
       var t=item.data;
       var isOut=t.type==='OUT';
       var tot=(t.items||[]).reduce(function(s,i){return s+(i.qty||0)*(i.rate||0);},0);
-      var dispAmt=t.amount||tot||0;
+      var dispAmt=t.amount||t.invoiceAmt||tot||0;
       var payBadge='';
-      if(t.pay_status==='credit') payBadge='<span style="background:#FEF3C7;color:#92400E;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px">Credit</span>';
-      else if(t.pay_status==='partial') payBadge='<span style="background:#EDE9FE;color:#5B21B6;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px">Partial</span>';
+      var ps=t.pay_status||t.payStatus||'';
+      if(ps==='credit') payBadge='<span style="background:#FEF3C7;color:#92400E;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px">Credit</span>';
+      else if(ps==='partial') payBadge='<span style="background:#EDE9FE;color:#5B21B6;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px">Partial</span>';
       tr.innerHTML=
         '<td style="font-size:11px;white-space:nowrap">'+t.date+'</td>'+
         '<td><span style="background:'+(isOut?'#FEE2E2':'#DCFCE7')+';color:'+(isOut?'#BF1B2C':'#166534')+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(isOut?'📤 OUT':'📥 IN')+'</span>'+payBadge+'</td>'+
