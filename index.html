@@ -2896,7 +2896,7 @@ function renderCustCard(c,type='customer'){
       ${c.days_since?`<span>📅 ${c.days_since}d ago</span>`:''}
       ${c.primary_city?`<span>📍 ${c.primary_city}${c.primary_state?', '+c.primary_state:''}</span>`:''}
       ${c.business_type?`<span>🏭 ${c.business_type}</span>`:''}
-      ${ov>0?`<span style="color:var(--red);font-weight:700">⚠ ₹${ov.toLocaleString('en-IN')} due</span>`:''}
+      ${ov>0?`<span style="color:var(--red);font-weight:700">⚠ ₹${ov.toLocaleString('en-IN')} due${(function(){var ct=TRANSACTIONS.filter(function(x){return x.party===c.name&&x.type==='OUT'&&(x.pay_status==='credit'||x.pay_status==='partial');});if(!ct.length)return '';var ld=ct.sort(function(a,b){return b.date>a.date?1:-1;})[0].date;var days=Math.floor((new Date()-new Date(ld))/864e5);return days>0?' · '+days+'d overdue':'';})()}</span>`:''}
     </div>
     <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
       ${gstBadge}${assignedBadge}${ownerBadge}
