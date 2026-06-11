@@ -421,22 +421,7 @@ tr:hover td{background:#FFFAF9}
                 <button class="btn btn-xs btn-ghost" onclick="openNewCustModal('supplier')">+ New Supplier</button>
               </div>
             </div>
-            <div class="field" id="txn-pay-field" style="display:none">
-            <label>Payment Status</label>
-            <select id="txn-pay-status" onchange="updatePaymentFields()" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border)">
-              <option value="credit">💳 Credit (Pay Later)</option>
-              <option value="paid">💵 Cash (Paid Full)</option>
-              <option value="partial">⚡ Partial Payment</option>
-            </select>
-          </div>
-          <div class="field" id="txn-received-field" style="display:none">
-            <label>Amount Received (₹)</label>
-            <input type="number" id="txn-amt-received" placeholder="0" min="0">
-          </div>
-          <div class="field" id="txn-amount-wrap" style="display:none">
-            <label>Invoice Amount (₹)</label>
-            <input type="number" id="txn-amount" placeholder="Total invoice value" min="0">
-          </div>
+            
           <div class="field"><label>Remarks</label><input type="text" id="txn-rem" placeholder="Optional note"></div>
             <div class="field" id="txn-amount-field" style="display:none">
               <label>Invoice Amount (₹)</label>
@@ -1621,12 +1606,8 @@ function setTxnType(t){
   var show=t==='OUT';
   var amtF=document.getElementById('txn-amount-field');
   var payF=document.getElementById('txn-paystatus-field');
-  var payF2=document.getElementById('txn-pay-field');
-  var amtW=document.getElementById('txn-amount-wrap');
   if(amtF)amtF.style.display=show?'':'none';
   if(payF)payF.style.display=show?'':'none';
-  if(payF2)payF2.style.display=show?'':'none';
-  if(amtW)amtW.style.display='none';
   togglePartialPay();
   renderPicker();
 }
