@@ -2903,7 +2903,7 @@ function renderCustCard(c,type='customer'){
     <div class="cust-meta">
       ${c.orders?`<span>📦 ${c.orders} orders</span>`:''}
       ${c.total_value?`<span>💰 ₹${Math.round(c.total_value).toLocaleString('en-IN')}</span>`:''}
-      ${c.days_since?`<span>📅 ${c.days_since}d ago</span>`:''}
+      ${(c.days_since&&c.days_since>0)?`<span>📅 ${c.days_since}d ago</span>`:''}
       ${c.primary_city?`<span>📍 ${c.primary_city}${c.primary_state?', '+c.primary_state:''}</span>`:''}
       ${c.business_type?`<span>🏭 ${c.business_type}</span>`:''}
       ${ov>0?'<span style="color:var(--red);font-weight:700">⚠ ₹'+ov.toLocaleString('en-IN')+' due'+overdueStr+'</span>':''}
