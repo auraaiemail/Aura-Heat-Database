@@ -1668,15 +1668,14 @@ async function submitTxn(){
   btn.disabled=false; btn.textContent='💾 Save Transaction';
   if(!ok)return;
   
-  // Update customer outstanding balance for credit/partial sales
+  // Update customer outstanding balance in background (no await = fast save)
   if(TXN_TYPE==='OUT'&&invoiceAmt>0&&payStatus!=='paid'){
     var dueAmt=invoiceAmt-amtReceived;
     var cust=CUSTOMERS_DB.find(function(c){return getCustName(c).toLowerCase()===party.toLowerCase()||c.name.toLowerCase()===party.toLowerCase();});
     if(cust){
       cust.outstanding=(cust.outstanding||0)+dueAmt;
       cust.priority=cust.priority==='HIGH'?'HIGH':'PAYMENT_DUE';
-      await saveCustomer(cust);
-      console.log('Updated outstanding for',party,'by',dueAmt,'total:',cust.outstanding);
+      saveCustomer(cust); // background - no await
     }
   }
   
