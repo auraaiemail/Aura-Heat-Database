@@ -1132,22 +1132,31 @@ async function loadTxns(){
     var res=await sb.from('transactions').select('data').order('created_at',{ascending:false}).range(0,499);
     TRANSACTIONS=(res.data||[]).map(function(r){return r.data;}).filter(Boolean);
     recalcBal(); checkAlerts(); renderDashboard();
-    
-    // Then load rest in background
+
+    // Then load the rest — fire remaining pages in parallel instead of one at a time.
+    // With ~4000 rows that was 7-8 sequential round trips before; each one waiting on
+    // the last was adding real seconds of network-latency delay and kept the tab busy
+    // while people tried to search/save/switch pages during it.
     if((res.data||[]).length===500){
-      var allData=[...TRANSACTIONS];
-      var page=1;
-      while(true){
-        var from=page*500;
-        var to=from+499;
-        var r2=await sb.from('transactions').select('data').order('created_at',{ascending:false}).range(from,to);
-        var rows=(r2.data||[]).map(function(r){return r.data;}).filter(Boolean);
-        allData=allData.concat(rows);
-        if(rows.length<500)break;
-        page++;
+      const {count}=await sb.from('transactions').select('id',{count:'exact',head:true});
+      const total=count||0;
+      const remainingPages=Math.max(0,Math.ceil(total/500)-1);
+      if(remainingPages>0){
+        const fetches=[];
+        for(var p=1;p<=remainingPages;p++){
+          var from=p*500, to=from+499;
+          fetches.push(sb.from('transactions').select('data').order('created_at',{ascending:false}).range(from,to));
+        }
+        const results=await Promise.all(fetches);
+        var allData=[...TRANSACTIONS];
+        results.forEach(function(r2){
+          var rows=(r2.data||[]).map(function(r){return r.data;}).filter(Boolean);
+          allData=allData.concat(rows);
+        });
+        TRANSACTIONS=allData;
+        recalcBal(); checkAlerts(); renderDashboard();
+        console.log('Loaded all transactions:',TRANSACTIONS.length);
       }
-      TRANSACTIONS=allData;
-      console.log('Loaded all transactions:',TRANSACTIONS.length);
     }
   }catch(e){console.error('loadTxns',e);}
 }
@@ -5167,7 +5176,7 @@ function today(){return new Date().toISOString().split('T')[0];}
 // ═══════════════════════════════════════════════════════════════
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('sw.js?v=6')
+    navigator.serviceWorker.register('sw.js?v=7') // bump this number on every deploy — it's what forces open tabs to pick up the new version quickly
       .then(reg=>setInterval(()=>reg.update(),30*60*1000))
       .catch(e=>console.log('SW failed',e));
   });
