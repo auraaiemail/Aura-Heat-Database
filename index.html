@@ -540,8 +540,14 @@ tr:hover td{background:#FFFAF9}
         </div>
         <div class="toolbar" style="margin-bottom:10px">
           <input type="text" id="cc-search" placeholder="Search code or description..." oninput="renderCycleCount()" style="flex:1;min-width:160px">
-          <select id="cc-reason-default" style="min-width:200px">
-            ${'<option value="Physical Count / Cycle Count">Physical Count / Cycle Count</option>'}
+          <select id="cc-reason-default" style="min-width:220px">
+            <option value="Physical Count / Cycle Count">Physical Count / Cycle Count</option>
+            <option value="Sample / Demo Given">Sample / Demo Given</option>
+            <option value="Damaged / Write-off">Damaged / Write-off</option>
+            <option value="Internal Use / Repair Parts">Internal Use / Repair Parts</option>
+            <option value="Return Processed (not via sale)">Return Processed (not via sale)</option>
+            <option value="Data Entry Error">Data Entry Error</option>
+            <option value="Other">Other</option>
           </select>
         </div>
         <div class="tbl-wrap">
@@ -2431,7 +2437,7 @@ function renderStock(){
       <td style="text-align:right;color:var(--red);font-weight:700;font-size:11px">${tO}</td>
       <td style="text-align:right;font-size:15px;font-weight:800;color:${b<=0?'var(--red)':b<MIN_QTY?'var(--orange)':'var(--green)'}">${b}</td>
       <td style="font-size:10px;color:#888;white-space:nowrap">${lastSale||'Never'}</td>
-      <td style="white-space:nowrap">${badge}${(curRole==='admin'||curRole==='manager')?'<button onclick="event.stopPropagation();openStockCorrection(\''+p.c+'\')" style="background:none;border:1px solid #9CA3AF;border-radius:3px;padding:1px 5px;font-size:10px;cursor:pointer;color:#6B7280;margin-left:4px" title="Correct stock">⚙</button>':''}</td>
+      <td style="white-space:nowrap">${badge}${(curRole==='admin'||curPerms.stockAdjust)?'<button onclick="event.stopPropagation();openStockCorrection(\''+p.c+'\')" style="background:none;border:1px solid #9CA3AF;border-radius:3px;padding:1px 5px;font-size:10px;cursor:pointer;color:#6B7280;margin-left:4px" title="Correct stock">⚙</button>':''}</td>
     </tr>`);
   });
   document.getElementById('stock-body').innerHTML=rows.length?rows.join(''):'<tr><td colspan="10" class="empty">No items found</td></tr>';
